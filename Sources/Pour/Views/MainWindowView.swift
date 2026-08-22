@@ -36,11 +36,17 @@ struct MainWindowView: View {
 
                 HStack {
                     Spacer(minLength: 0)
-                    Image(nsImage: NSApplication.shared.applicationIconImage)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: 96, height: 96)
-                        .accessibilityLabel("Pour app icon")
+                    VStack(spacing: PourSpace.xxs) {
+                        Image(nsImage: NSApplication.shared.applicationIconImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 112, height: 112)
+                            .accessibilityLabel("Pour app icon")
+
+                        Text("from Brewed AI")
+                            .font(PourFont.callout())
+                            .foregroundStyle(PourColor.textDim)
+                    }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, PourSpace.sm)
