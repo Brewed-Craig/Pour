@@ -31,12 +31,44 @@ macOS ties the Accessibility grant to the app's **signed identity**. Ad-hoc sign
 a new identity on every build, so Pour's hotkey and text injection will silently stop working
 after each rebuild and you'll waste an afternoon debugging the wrong layer.
 
-`build.sh` looks for a `Developer ID Application` certificate automatically. If you have more
-than one, pin it:
+`build.sh` looks for a `Developer ID Application` certificate automatically, then falls back to
+a certificate named exactly `Pour Local Code Signing`, then ad-hoc. If you have a paid Apple
+Developer ID and more than one matching certificate, pin it:
 
 ```sh
 SIGN_ID="Developer ID Application: Your Name (TEAMID)" ./build.sh run
 ```
+
+#### No Apple Developer account? Make a free local certificate instead
+
+A Developer ID costs $99/year and isn't needed just to stop the permission prompts on your own
+Mac — a free self-signed certificate gives you the same *stable identity* that Accessibility
+grants are keyed to. It won't pass Gatekeeper on another machine and it isn't for distribution,
+but for building and running Pour locally it's all you need.
+
+1. Open **Keychain Access** (`/Applications/Utilities/Keychain Access.app`).
+2. Menu bar: **Keychain Access → Certificate Assistant → Create a Certificate…**
+3. Name it **exactly** `Pour Local Code Signing` — `build.sh` looks for that name.
+4. **Identity Type:** Self Signed Root
+5. **Certificate Type:** Code Signing
+6. Optionally check **Let me override defaults** and extend the validity period (the default is
+   1 year; 10 years avoids having to redo this).
+7. Click **Create**, then click through the rest of the assistant with the defaults.
+8. Find the new certificate in the **login** keychain, double-click it, expand **Trust**, and
+   set **Code Signing** to **Always Trust**. This stops macOS prompting to unlock your keychain
+   every time `build.sh` signs the app.
+
+Verify it's picked up:
+
+```sh
+./build.sh doctor
+# Signing
+#   identity   Pour Local Code Signing
+```
+
+From here, every `./build.sh run` signs with the same identity, so macOS remembers your
+Accessibility and Microphone grants across rebuilds — no more re-approving Pour every time you
+change the code.
 
 To re-test the permission flow from scratch:
 
@@ -57,12 +89,24 @@ green = delivered, red triangle = something's blocked (the menu says what).
 
 ## How the hotkey behaves
 
+Two interaction styles, switchable in Settings → Hotkey → Style:
+
+**Hold to talk** (default)
 - **Hold `** — dictates while held.
 - **Tap ` quickly** (under 220ms) — types a literal backtick, as normal. You don't lose the key.
-- **⌘` / ⌃` / ⌥`** — passes straight through; those are real shortcuts.
 - **Esc while holding** — discards the dictation.
 
-Change the key in `Sources/HotkeyKit/PushToTalkHotkey.swift` → `Config.keyCode`.
+**Press to start/stop**
+- **Press `** — starts dictating.
+- **Press ` again** — stops and delivers.
+- **Esc while dictating** — discards it.
+- The key is fully reserved in this mode — every press means start or stop, so there's no
+  literal-character fallback.
+
+**⌘` / ⌃` / ⌥`** always pass straight through, in either mode — those are real shortcuts.
+
+Change the key itself from Settings (click the field, then press a key), or set the default in
+`Sources/HotkeyKit/PushToTalkHotkey.swift` → `Config.keyCode`.
 
 ## Privacy
 
@@ -106,18 +150,19 @@ dictation of every session.
 
 ## Included now
 
-- Menu-bar controls and configurable push-to-talk hotkey
-- Live non-activating HUD and level meter
+- Menu-bar controls and a configurable push-to-talk hotkey — hold-to-talk or press-to-toggle
+- Live non-activating HUD with a level-reactive waveform
 - Five-day searchable local transcription history
 - Personal vocabulary and correction dictionary
 - Locale/model picker and settings window
+- Launch at Login (`SMAppService`)
 
 ## Possible next steps
 
 - **RefineKit** — the cleanup pass (filler removal, backtrack resolution, list formatting) via
   a local MLX model, plus personal dictionary and snippets. Hooks in at the marked spot in
   `DictationController.finishCapture()`.
-- Per-app profiles, engine picker, launch-at-login, and a notarized DMG.
+- Per-app profiles, an engine picker, and a notarized DMG for distribution beyond your own Mac.
 
 ## Notes
 
