@@ -17,6 +17,7 @@ final class AppModel {
 
     let dictionary = DictionaryStore()
     let history: HistoryStore
+    let usageStats = UsageStatsStore()
     let controller: DictationController
     private(set) var settings: AppSettings
 
@@ -69,6 +70,12 @@ final class AppModel {
         }
         controller.onDelivered = { [weak self] text, appName, strategy, elapsed, hits in
             guard let self else { return }
+            // Independent of whether History is enabled — a word count isn't the
+            // transcript text itself, and stats shouldn't reset just because
+            // someone turned History off.
+            let wordCount = text.split(whereSeparator: \.isWhitespace).count
+            self.usageStats.record(wordCount: wordCount)
+
             guard let entry = self.history.record(
                 text: text,
                 appName: appName,

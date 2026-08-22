@@ -5,6 +5,7 @@ import SwiftUI
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
     case transcriptions = "Transcriptions"
     case dictionary = "Dictionary"
+    case stats = "Stats"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -12,6 +13,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .transcriptions: "text.bubble"
         case .dictionary: "character.book.closed"
+        case .stats: "chart.bar"
         case .settings: "gearshape"
         }
     }
@@ -63,6 +65,7 @@ struct MainWindowView: View {
                 switch model.selectedSidebarSection ?? .transcriptions {
                 case .transcriptions: TranscriptionsView()
                 case .dictionary: DictionaryView()
+                case .stats: StatsView()
                 case .settings: SettingsView()
                 }
             }
