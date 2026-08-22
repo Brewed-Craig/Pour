@@ -43,9 +43,15 @@ struct MainWindowView: View {
                             .frame(width: 112, height: 112)
                             .accessibilityLabel("Pour app icon")
 
-                        Text("from Brewed AI")
-                            .font(PourFont.callout())
-                            .foregroundStyle(PourColor.textDim)
+                        HStack(spacing: 0) {
+                            Text("from ")
+                                .foregroundStyle(PourColor.textDim)
+                            Text("Brewed ")
+                                .foregroundStyle(PourColor.coffee)
+                            Text("AI")
+                                .foregroundStyle(PourColor.blue400)
+                        }
+                        .font(PourFont.callout())
                     }
                     Spacer(minLength: 0)
                 }
