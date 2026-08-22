@@ -40,7 +40,7 @@ struct MainWindowView: View {
                         Image(nsImage: NSApplication.shared.applicationIconImage)
                             .resizable()
                             .interpolation(.high)
-                            .frame(width: 112, height: 112)
+                            .frame(width: 128, height: 128)
                             .accessibilityLabel("Pour app icon")
 
                         HStack(spacing: 0) {
@@ -49,7 +49,7 @@ struct MainWindowView: View {
                             Text("AI")
                                 .foregroundStyle(PourColor.blue400)
                         }
-                        .font(PourFont.callout())
+                        .font(PourFont.body(14))
                     }
                     Spacer(minLength: 0)
                 }
