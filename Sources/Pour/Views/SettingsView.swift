@@ -1,3 +1,4 @@
+import AppKit
 import DesignKit
 import SwiftUI
 import TranscriptionKit
@@ -90,14 +91,24 @@ struct SettingsView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: PourSpace.xxs) {
-            Text("A Brewed AI product ·")
-                .foregroundStyle(PourColor.textDim)
-            Link("brewed-ai.com", destination: URL(string: "https://brewed-ai.com/")!)
-                .foregroundStyle(PourColor.blue500)
+        HStack(alignment: .bottom, spacing: PourSpace.md) {
+            HStack(spacing: PourSpace.xxs) {
+                Text("A Brewed AI passion project ·")
+                    .foregroundStyle(PourColor.textDim)
+                Link("brewed-ai.com", destination: URL(string: "https://brewed-ai.com/")!)
+                    .foregroundStyle(PourColor.blue500)
+            }
+            .font(PourFont.callout())
+
+            Spacer(minLength: PourSpace.md)
+
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 72, height: 72)
+                .accessibilityLabel("Pour app icon")
         }
-        .font(PourFont.callout())
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .bottomTrailing)
     }
 
     private var hotkeyKeyCode: Binding<CGKeyCode> {
