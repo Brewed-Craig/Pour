@@ -44,10 +44,8 @@ struct MainWindowView: View {
                             .accessibilityLabel("Pour app icon")
 
                         HStack(spacing: 0) {
-                            Text("from ")
-                                .foregroundStyle(PourColor.textDim)
                             Text("Brewed ")
-                                .foregroundStyle(PourColor.coffee)
+                                .foregroundStyle(PourColor.amberDark)
                             Text("AI")
                                 .foregroundStyle(PourColor.blue400)
                         }
