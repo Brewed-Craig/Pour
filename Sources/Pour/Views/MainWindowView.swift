@@ -1,3 +1,4 @@
+import AppKit
 import DesignKit
 import SwiftUI
 
@@ -23,13 +24,26 @@ struct MainWindowView: View {
         @Bindable var model = model
 
         NavigationSplitView {
-            List(selection: $model.selectedSidebarSection) {
-                ForEach(SidebarSection.allCases) { section in
-                    Label(section.rawValue, systemImage: section.symbol)
-                        .font(PourFont.body(13))
-                        .padding(.vertical, PourSpace.xxs)
-                        .tag(section)
+            VStack(spacing: 0) {
+                List(selection: $model.selectedSidebarSection) {
+                    ForEach(SidebarSection.allCases) { section in
+                        Label(section.rawValue, systemImage: section.symbol)
+                            .font(PourFont.body(13))
+                            .padding(.vertical, PourSpace.xxs)
+                            .tag(section)
+                    }
                 }
+
+                HStack {
+                    Spacer()
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 64, height: 64)
+                        .accessibilityLabel("Pour app icon")
+                }
+                .padding(.horizontal, PourSpace.sm)
+                .padding(.bottom, PourSpace.sm)
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190)
             .background(PourColor.bgAlt)
