@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened runtime needs this for the microphone. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!--
+	  Deliberately NOT sandboxed. CGEventTap and the Accessibility API — the two
+	  things this app is built out of — do not work inside the App Sandbox.
+	  That also means Pour can never ship on the Mac App Store; distribution is
+	  a notarized DMG, same as every other dictation app.
+	-->
+</dict>
+</plist>

@@ -1,0 +1,43 @@
+// swift-tools-version: 6.0
+import PackageDescription
+
+// Swift 5 language mode on purpose for phase 0 — strict concurrency checking on
+// CoreGraphics event taps and AVAudioEngine callbacks is a fight worth having
+// later, once the hot path is proven. Tighten to .v6 in phase 1.
+let mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
+
+let package = Package(
+    name: "Pour",
+    platforms: [.macOS("26.0")],
+    products: [
+        .executable(name: "Pour", targets: ["Pour"])
+    ],
+    targets: [
+        .target(name: "HotkeyKit", swiftSettings: mode),
+        .target(name: "AudioCapture", swiftSettings: mode),
+        .target(name: "TranscriptionKit", swiftSettings: mode),
+        .target(name: "InjectKit", swiftSettings: mode),
+        .target(
+            name: "DesignKit",
+            resources: [.copy("Resources")],
+            swiftSettings: mode
+        ),
+        .target(name: "DictionaryKit", swiftSettings: mode),
+        .target(
+            name: "FlowCore",
+            dependencies: ["HotkeyKit", "AudioCapture", "TranscriptionKit", "InjectKit", "DictionaryKit"],
+            swiftSettings: mode
+        ),
+        .executableTarget(
+            name: "Pour",
+            dependencies: ["FlowCore", "DesignKit", "DictionaryKit", "TranscriptionKit", "HotkeyKit"],
+            swiftSettings: mode
+        ),
+        .executableTarget(
+            name: "RiskWarningChecks",
+            dependencies: ["DictionaryKit"],
+            path: "Tests/RiskWarningChecks",
+            swiftSettings: mode
+        )
+    ]
+)
