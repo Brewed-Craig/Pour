@@ -2,12 +2,20 @@ import CoreGraphics
 import Foundation
 import HotkeyKit
 
+/// Which `SpeechEngine` Settings' Model picker points `DictationController` at.
+/// Apple's SpeechAnalyzer is the default and always available; Parakeet is optional
+/// (downloads its own models on first use — see `ParakeetKit`).
+enum EngineKind: String, Codable {
+    case apple
+    case parakeet
+}
+
 /// Persisted user settings: the push-to-talk key and its interaction mode, and the
-/// transcription locale ("the model," in Settings). Everything else about the engine
-/// stays exactly as it is.
+/// transcription engine/locale ("the model," in Settings).
 struct AppSettings: Codable {
     var hotkeyKeyCode: CGKeyCode = 50 // kVK_ANSI_Grave — Pour's original default
     var interactionMode: PushToTalkHotkey.InteractionMode = .holdToTalk
+    var engineKind: EngineKind = .apple
     var localeIdentifier: String = Locale.current.identifier
     var launchAtLogin: Bool = false
     var historyEnabled: Bool = true
@@ -21,6 +29,7 @@ struct AppSettings: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         hotkeyKeyCode = try c.decodeIfPresent(CGKeyCode.self, forKey: .hotkeyKeyCode) ?? 50
         interactionMode = try c.decodeIfPresent(PushToTalkHotkey.InteractionMode.self, forKey: .interactionMode) ?? .holdToTalk
+        engineKind = try c.decodeIfPresent(EngineKind.self, forKey: .engineKind) ?? .apple
         localeIdentifier = try c.decodeIfPresent(String.self, forKey: .localeIdentifier) ?? Locale.current.identifier
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? true

@@ -92,6 +92,25 @@ struct SettingsView: View {
                 settingsCard(title: "Model") {
                     VStack(alignment: .leading, spacing: PourSpace.md) {
                         HStack {
+                            Text("Engine")
+                                .font(PourFont.body(13))
+                                .foregroundStyle(PourColor.text)
+                            Spacer()
+                            Picker("", selection: engineKind) {
+                                Text("Apple").tag(EngineKind.apple)
+                                Text("Parakeet").tag(EngineKind.parakeet)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 200)
+                        }
+                        Text(engineHint)
+                            .font(PourFont.callout())
+                            .foregroundStyle(PourColor.textMuted)
+
+                        Divider().overlay(PourColor.borderHairline)
+
+                        HStack {
                             Text("Language")
                                 .font(PourFont.body(13))
                                 .foregroundStyle(PourColor.text)
@@ -106,16 +125,9 @@ struct SettingsView: View {
                             .frame(minWidth: 200)
                             .tint(PourColor.blue500)
                         }
-                        Divider().overlay(PourColor.borderHairline)
-                        HStack {
-                            Text("Engine")
-                                .font(PourFont.body(13))
-                                .foregroundStyle(PourColor.text)
-                            Spacer()
-                            Text(AppleSpeechEngine.displayName)
-                                .font(PourFont.mono(12))
-                                .foregroundStyle(PourColor.textMuted)
-                        }
+                        .disabled(model.settings.engineKind != .apple)
+                        .opacity(model.settings.engineKind == .apple ? 1 : 0.4)
+
                         if let downloadProgress {
                             ProgressView(value: downloadProgress)
                                 .tint(PourColor.amber)
@@ -206,6 +218,31 @@ struct SettingsView: View {
             get: { model.settings.historyEnabled },
             set: { model.setHistoryEnabled($0) }
         )
+    }
+
+    private var engineKind: Binding<EngineKind> {
+        Binding(
+            get: { model.settings.engineKind },
+            set: { newValue in
+                Task {
+                    downloadProgress = 0
+                    await model.setEngineKind(newValue) { fraction in
+                        Task { @MainActor in downloadProgress = fraction }
+                    }
+                    downloadProgress = nil
+                }
+            }
+        )
+    }
+
+    private var engineHint: String {
+        switch model.settings.engineKind {
+        case .apple:
+            "Apple's on-device SpeechAnalyzer. Models are managed by macOS."
+        case .parakeet:
+            "FluidAudio's Parakeet, on-device. Downloads its own model on first use (needs " +
+            "network once) and is English-only for now, so the language picker is disabled."
+        }
     }
 
     private var localeIdentifier: Binding<String> {

@@ -4,7 +4,9 @@ import Foundation
 import HistoryKit
 import HotkeyKit
 import Observation
+import ParakeetKit
 import ServiceManagement
+import TranscriptionKit
 
 /// The app's central state: the two persisted stores, the dictation controller, and
 /// settings. One instance, owned by the app delegate, handed down through the
@@ -50,6 +52,7 @@ final class AppModel {
             hotkeyConfig: loaded.hotkeyConfig,
             locale: Locale(identifier: loaded.localeIdentifier)
         )
+        controller.engineFactory = Self.engineFactory(for: loaded.engineKind)
 
         controller.onStateChange = { [weak self] state in
             guard let self else { return }
@@ -107,6 +110,29 @@ final class AppModel {
         settings.localeIdentifier = identifier
         settings.save()
         await controller.updateLocale(Locale(identifier: identifier), onDownloadProgress: onDownloadProgress)
+    }
+
+    /// Swaps which `SpeechEngine` Settings' Model picker points at. Parakeet downloads
+    /// its own models on first use — `onDownloadProgress` reports that the same way
+    /// Apple's OS-managed asset download does.
+    func setEngineKind(_ kind: EngineKind, onDownloadProgress: ((Double) -> Void)? = nil) async {
+        settings.engineKind = kind
+        settings.save()
+        controller.engineFactory = Self.engineFactory(for: kind)
+        await controller.start(onDownloadProgress: onDownloadProgress)
+    }
+
+    private static func engineFactory(for kind: EngineKind) -> DictationController.EngineFactory {
+        switch kind {
+        case .apple:
+            return { locale, onDownloadProgress in
+                try await AppleSpeechEngine.make(locale: locale, onDownloadProgress: onDownloadProgress)
+            }
+        case .parakeet:
+            return { _, onDownloadProgress in
+                try await ParakeetSpeechEngine.make(onDownloadProgress: onDownloadProgress)
+            }
+        }
     }
 
     /// `SMAppService` is itself the source of truth for whether Pour is a login item —

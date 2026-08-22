@@ -89,6 +89,15 @@ public final class DictationController {
     private var target: InjectionTarget = .none
     private var releasedAt: CFAbsoluteTime = 0
 
+    /// How `start()` builds its engine. FlowCore doesn't know Parakeet (or any other
+    /// engine) exists — the app layer swaps this in based on Settings' engine picker.
+    /// Defaults to Apple's SpeechAnalyzer, so nothing about the base app changes for
+    /// anyone who never touches the picker.
+    public typealias EngineFactory = (Locale, ((Double) -> Void)?) async throws -> any SpeechEngine
+    public var engineFactory: EngineFactory = { locale, onDownloadProgress in
+        try await AppleSpeechEngine.make(locale: locale, onDownloadProgress: onDownloadProgress)
+    }
+
     public init(dictionary: DictionaryStore, hotkeyConfig: PushToTalkHotkey.Config = .init(), locale: Locale = .current) {
         self.dictionary = dictionary
         self.hotkeyConfig = hotkeyConfig
@@ -142,7 +151,7 @@ public final class DictationController {
         }
 
         do {
-            let engine = try await AppleSpeechEngine.make(locale: locale, onDownloadProgress: onDownloadProgress)
+            let engine = try await engineFactory(locale, onDownloadProgress)
             let capture = MicrophoneCapture(targetFormat: engine.audioFormat)
             capture.onLevel = { [weak self] level in
                 Task { @MainActor in self?.level = level }

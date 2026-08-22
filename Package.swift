@@ -12,11 +12,21 @@ let package = Package(
     products: [
         .executable(name: "Pour", targets: ["Pour"])
     ],
+    dependencies: [
+        // Optional second engine (Parakeet, via FluidAudio) — isolated to ParakeetKit.
+        // Apple's SpeechAnalyzer path (TranscriptionKit) has no dependency on this at all.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6")
+    ],
     targets: [
         .target(name: "HotkeyKit", swiftSettings: mode),
         .target(name: "PrivacyKit", swiftSettings: mode),
         .target(name: "AudioCapture", swiftSettings: mode),
         .target(name: "TranscriptionKit", swiftSettings: mode),
+        .target(
+            name: "ParakeetKit",
+            dependencies: ["TranscriptionKit", .product(name: "FluidAudio", package: "FluidAudio")],
+            swiftSettings: mode
+        ),
         .target(name: "InjectKit", swiftSettings: mode),
         .target(
             name: "DesignKit",
@@ -32,7 +42,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Pour",
-            dependencies: ["FlowCore", "DesignKit", "DictionaryKit", "HistoryKit", "TranscriptionKit", "HotkeyKit", "PrivacyKit"],
+            dependencies: ["FlowCore", "DesignKit", "DictionaryKit", "HistoryKit", "TranscriptionKit", "ParakeetKit", "HotkeyKit", "PrivacyKit"],
             swiftSettings: mode
         ),
         .executableTarget(
