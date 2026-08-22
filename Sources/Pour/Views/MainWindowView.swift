@@ -35,12 +35,13 @@ struct MainWindowView: View {
                 }
 
                 HStack {
-                    Spacer()
+                    Spacer(minLength: 0)
                     Image(nsImage: NSApplication.shared.applicationIconImage)
                         .resizable()
                         .interpolation(.high)
-                        .frame(width: 64, height: 64)
+                        .frame(width: 96, height: 96)
                         .accessibilityLabel("Pour app icon")
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, PourSpace.sm)
                 .padding(.bottom, PourSpace.sm)
