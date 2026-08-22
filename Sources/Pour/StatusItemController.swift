@@ -100,7 +100,7 @@ final class StatusItemController: NSObject {
 
         case .idle:
             setSymbol("cup.and.saucer", on: button, tint: nil, label: "Ready")
-            statusLine.title = "Ready · hold \(hotkeyLabel) to dictate"
+            statusLine.title = "Ready · \(hotkeyPhrase)"
 
         case .capturing:
             setSymbol("cup.and.saucer.fill", on: button, tint: Brand.amber, label: "Listening")
@@ -146,11 +146,18 @@ final class StatusItemController: NSObject {
 
     private var hotkeyLabel = "`"
 
+    private var hotkeyPhrase: String {
+        switch model.settings.interactionMode {
+        case .holdToTalk: "hold \(hotkeyLabel) to dictate"
+        case .toggle: "press \(hotkeyLabel) to dictate"
+        }
+    }
+
     private func updateHotkeyLabel(_ keyCode: CGKeyCode) {
         hotkeyLabel = KeyName.string(for: keyCode)
-        hintLine.title = "Hold \(hotkeyLabel) to dictate · Esc to cancel"
+        hintLine.title = "\(hotkeyPhrase.prefix(1).uppercased())\(hotkeyPhrase.dropFirst()) · Esc to cancel"
         if case .idle = model.dictationState {
-            statusLine.title = "Ready · hold \(hotkeyLabel) to dictate"
+            statusLine.title = "Ready · \(hotkeyPhrase)"
         }
     }
 

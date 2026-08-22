@@ -3,6 +3,7 @@ import FlowCore
 import Foundation
 import HotkeyKit
 import Observation
+import ServiceManagement
 
 /// The app's central state: the two persisted stores, the dictation controller, and
 /// settings. One instance, owned by the app delegate, handed down through the
@@ -37,7 +38,10 @@ final class AppModel {
     var onSettingsChanged: ((AppSettings) -> Void)?
 
     init() {
-        let loaded = AppSettings.load()
+        var loaded = AppSettings.load()
+        // SMAppService is the actual source of truth (the user could have removed
+        // Pour from Login Items in System Settings directly) — reconcile on launch.
+        loaded.launchAtLogin = SMAppService.mainApp.status == .enabled
         settings = loaded
         controller = DictationController(
             dictionary: dictionary,
@@ -85,14 +89,38 @@ final class AppModel {
 
     func setHotkey(_ config: PushToTalkHotkey.Config) {
         settings.hotkeyKeyCode = config.keyCode
+        settings.interactionMode = config.mode
         settings.save()
         controller.updateHotkey(config)
         onSettingsChanged?(settings)
+    }
+
+    func setInteractionMode(_ mode: PushToTalkHotkey.InteractionMode) {
+        var config = settings.hotkeyConfig
+        config.mode = mode
+        setHotkey(config)
     }
 
     func setLocale(_ identifier: String, onDownloadProgress: ((Double) -> Void)? = nil) async {
         settings.localeIdentifier = identifier
         settings.save()
         await controller.updateLocale(Locale(identifier: identifier), onDownloadProgress: onDownloadProgress)
+    }
+
+    /// `SMAppService` is itself the source of truth for whether Pour is a login item —
+    /// `settings.launchAtLogin` just mirrors it for the UI without an extra query.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            settings.launchAtLogin = enabled
+        } catch {
+            // Registration failed — leave settings reflecting the service's actual state.
+            settings.launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+        settings.save()
     }
 }

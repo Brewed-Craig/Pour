@@ -20,19 +20,29 @@ public enum HotkeyError: Error, LocalizedError {
 /// Push-to-talk on a held key. Default is backtick (`) — virtual key 50.
 ///
 /// The key-down is swallowed so the character never reaches the app you're typing in.
-/// If you let go again within `tapThreshold`, we assume you actually wanted to type a
-/// backtick and re-post it synthetically, so the key isn't lost to you forever.
+/// In `.holdToTalk` mode, if you let go again within `tapThreshold`, we assume you
+/// actually wanted to type the character and re-post it synthetically, so the key
+/// isn't lost to you forever. In `.toggle` mode every press means something (start or
+/// stop), so the key is fully reserved and that fallback doesn't apply.
 ///
 /// Modifier combinations (⌘`, ⌃`, ⌥`) pass straight through — those are real shortcuts.
 public final class PushToTalkHotkey {
 
+    public enum InteractionMode: String, Codable, Sendable {
+        /// Hold the key while talking; release to finish.
+        case holdToTalk
+        /// Press once to start, press again to stop.
+        case toggle
+    }
+
     public struct Config {
         /// kVK_ANSI_Grave.
         public var keyCode: CGKeyCode = 50
-        /// Held for less than this and we treat it as "you meant to type the character".
+        /// Held for less than this and we treat it as "you meant to type the character" — `.holdToTalk` only.
         public var tapThreshold: TimeInterval = 0.22
         /// kVK_Escape — cancels an in-flight dictation.
         public var cancelKeyCode: CGKeyCode = 53
+        public var mode: InteractionMode = .holdToTalk
 
         public init() {}
     }
@@ -51,6 +61,11 @@ public final class PushToTalkHotkey {
     private var source: CFRunLoopSource?
     private var isDown = false
     private var pressedAt: CFAbsoluteTime = 0
+    /// `.toggle` mode only: whether a dictation is currently open.
+    private var toggleActive = false
+
+    /// True while a dictation session is open, in either mode — used to gate Esc-cancel.
+    private var sessionOpen: Bool { config.mode == .toggle ? toggleActive : isDown }
 
     public init(config: Config = Config()) {
         self.config = config
@@ -89,6 +104,7 @@ public final class PushToTalkHotkey {
         tap = nil
         source = nil
         isDown = false
+        toggleActive = false
     }
 
     // MARK: - Tap callback
@@ -109,8 +125,9 @@ public final class PushToTalkHotkey {
         let code = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         // Esc during a dictation discards it, and the app never sees the Esc.
-        if isDown, type == .keyDown, code == config.cancelKeyCode {
+        if sessionOpen, type == .keyDown, code == config.cancelKeyCode {
             isDown = false
+            toggleActive = false
             onCancel?()
             return nil
         }
@@ -122,10 +139,21 @@ public final class PushToTalkHotkey {
             return Unmanaged.passUnretained(event)
         }
 
+        // Swallow auto-repeat in both modes; holding the key is one gesture, not a
+        // stream of presses, and a toggle definitely shouldn't flip on every repeat.
+        if type == .keyDown, event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return nil
+        }
+
+        switch config.mode {
+        case .holdToTalk: return handleHoldToTalk(type: type, event: event)
+        case .toggle: return handleToggle(type: type)
+        }
+    }
+
+    private func handleHoldToTalk(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .keyDown:
-            // Swallow auto-repeat; holding the key is the gesture, not a stream of presses.
-            if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return nil }
             if !isDown {
                 isDown = true
                 pressedAt = CFAbsoluteTimeGetCurrent()
@@ -148,6 +176,21 @@ public final class PushToTalkHotkey {
         default:
             return Unmanaged.passUnretained(event)
         }
+    }
+
+    /// The key is fully reserved in toggle mode — every press does something, so
+    /// there's no "you meant to type it" fallback and key-up is a no-op. Triggers on
+    /// key-down for the same instant feedback as hold mode's press.
+    private func handleToggle(type: CGEventType) -> Unmanaged<CGEvent>? {
+        guard type == .keyDown else { return nil }
+        if toggleActive {
+            toggleActive = false
+            onRelease?(0)
+        } else {
+            toggleActive = true
+            onPress?()
+        }
+        return nil
     }
 
     /// Re-emit the character the user actually wanted. Posted asynchronously so we

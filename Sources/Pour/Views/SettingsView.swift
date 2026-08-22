@@ -1,4 +1,5 @@
 import DesignKit
+import HotkeyKit
 import SwiftUI
 import TranscriptionKit
 
@@ -10,6 +11,19 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PourSpace.xl) {
+                settingsCard(title: "General") {
+                    HStack {
+                        Text("Launch at login")
+                            .font(PourFont.body(13))
+                            .foregroundStyle(PourColor.text)
+                        Spacer()
+                        Toggle("", isOn: launchAtLogin)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(PourColor.amber)
+                    }
+                }
+
                 settingsCard(title: "Hotkey") {
                     VStack(alignment: .leading, spacing: PourSpace.sm) {
                         HStack {
@@ -23,7 +37,21 @@ struct SettingsView: View {
                                 model.setHotkey(config)
                             }
                         }
-                        Text("Hold this key to dictate, anywhere. Click, then press the key you want.")
+                        Divider().overlay(PourColor.borderHairline)
+                        HStack {
+                            Text("Style")
+                                .font(PourFont.body(13))
+                                .foregroundStyle(PourColor.text)
+                            Spacer()
+                            Picker("", selection: interactionMode) {
+                                Text("Hold to talk").tag(PushToTalkHotkey.InteractionMode.holdToTalk)
+                                Text("Press to start/stop").tag(PushToTalkHotkey.InteractionMode.toggle)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 260)
+                        }
+                        Text(interactionModeHint)
                             .font(PourFont.callout())
                             .foregroundStyle(PourColor.textMuted)
                     }
@@ -103,6 +131,29 @@ struct SettingsView: View {
         Binding(
             get: { model.settings.hotkeyKeyCode },
             set: { _ in } // HotkeyRecorder reports through onChange; AppModel is the source of truth.
+        )
+    }
+
+    private var interactionMode: Binding<PushToTalkHotkey.InteractionMode> {
+        Binding(
+            get: { model.settings.interactionMode },
+            set: { model.setInteractionMode($0) }
+        )
+    }
+
+    private var interactionModeHint: String {
+        switch model.settings.interactionMode {
+        case .holdToTalk:
+            "Hold this key to dictate, anywhere. Click, then press the key you want. Let go to finish."
+        case .toggle:
+            "Press once to start dictating, press again to stop. Esc still cancels."
+        }
+    }
+
+    private var launchAtLogin: Binding<Bool> {
+        Binding(
+            get: { model.settings.launchAtLogin },
+            set: { model.setLaunchAtLogin($0) }
         )
     }
 

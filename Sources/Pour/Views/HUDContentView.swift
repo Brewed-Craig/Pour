@@ -51,23 +51,33 @@ private struct Waveform: View {
             let level = model.level
             HStack(alignment: .center, spacing: 3) {
                 ForEach(0..<Self.barCount, id: \.self) { index in
+                    let bar = bar(for: index, at: t, level: level)
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(PourColor.amber)
-                        .frame(width: 4, height: height(for: index, at: t, level: level))
+                        .fill(barColor(fraction: bar.fraction))
+                        .frame(width: 4, height: bar.height)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func height(for index: Int, at time: TimeInterval, level: Float) -> CGFloat {
+    private func bar(for index: Int, at time: TimeInterval, level: Float) -> (height: CGFloat, fraction: CGFloat) {
         let floorHeight: CGFloat = 3
         let phase = Self.phases[index]
         let wave = sin(time * 6.0 + phase * .pi * 2)
         let amplitude = CGFloat(max(0.05, level))
         // The ripple rides on top of the level so bars still breathe during quiet
         // passages instead of flatlining between buffers.
-        let scaled = amplitude * (0.55 + 0.45 * CGFloat(wave))
-        return floorHeight + max(0, scaled) * 39
+        let scaled = max(0, amplitude * (0.55 + 0.45 * CGFloat(wave)))
+        return (floorHeight + scaled * 39, min(1, scaled))
+    }
+
+    /// Amber at rest, popping straight to Blue 400 — the brand's "bright accent, glow
+    /// edge" token — once a bar crosses the threshold. No continuous blend: amber
+    /// (~45° hue) and cyan (~200° hue) sit almost opposite on the wheel, so a smooth
+    /// RGB crossfade between them passes straight through a muddy green midpoint.
+    /// A hard cutover keeps both colors clean and reads as a genuine "pop."
+    private func barColor(fraction: CGFloat) -> Color {
+        fraction > 0.55 ? PourColor.blue400 : PourColor.amber
     }
 }

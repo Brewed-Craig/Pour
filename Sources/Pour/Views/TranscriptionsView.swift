@@ -64,10 +64,17 @@ struct TranscriptionsView: View {
         }
     }
 
+    private var idleHotkeyHint: String {
+        switch model.settings.interactionMode {
+        case .holdToTalk: "Hold your dictation key anywhere, or press Start here."
+        case .toggle: "Press your dictation key anywhere, or press Start here."
+        }
+    }
+
     private var hint: String {
         switch model.dictationState {
         case .starting: "Starting Pour\u{2026}"
-        case .idle: "Hold your dictation key anywhere, or press Start here."
+        case .idle: idleHotkeyHint
         case .capturing: model.preview.isEmpty ? "Listening\u{2026}" : model.preview
         case .finishing: "Transcribing\u{2026}"
         case .injecting: "Delivering\u{2026}"
