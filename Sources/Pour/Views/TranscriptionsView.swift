@@ -28,7 +28,9 @@ struct TranscriptionsView: View {
                 ScrollView {
                     LazyVStack(spacing: PourSpace.sm) {
                         ForEach(filtered) { entry in
-                            HistoryRowView(entry: entry)
+                            HistoryRowView(entry: entry) {
+                                model.history.delete(entry)
+                            }
                         }
                     }
                     .padding(PourSpace.lg)

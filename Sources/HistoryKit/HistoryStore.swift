@@ -90,6 +90,11 @@ public final class HistoryStore {
         try? FileManager.default.removeItem(at: fileURL)
     }
 
+    public func delete(_ entry: HistoryEntry) {
+        entries.removeAll { $0.id == entry.id }
+        save()
+    }
+
     public func search(_ query: String) -> [HistoryEntry] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return entries }

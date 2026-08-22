@@ -5,6 +5,7 @@ import SwiftUI
 
 struct HistoryRowView: View {
     let entry: HistoryEntry
+    var onDelete: () -> Void
     @State private var showCorrections = false
     @State private var didCopy = false
 
@@ -24,14 +25,24 @@ struct HistoryRowView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button {
-                    copy()
-                } label: {
-                    Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(didCopy ? PourColor.success : PourColor.textDim)
+                HStack(spacing: PourSpace.sm) {
+                    Button {
+                        copy()
+                    } label: {
+                        Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                            .foregroundStyle(didCopy ? PourColor.success : PourColor.textDim)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy")
+
+                    Button {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.pourDestructive)
+                    .help("Delete")
                 }
-                .buttonStyle(.plain)
-                .help("Copy")
             }
 
             HStack(spacing: PourSpace.xs) {
