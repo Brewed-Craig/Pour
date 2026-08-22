@@ -10,6 +10,7 @@ struct AppSettings: Codable {
     var interactionMode: PushToTalkHotkey.InteractionMode = .holdToTalk
     var localeIdentifier: String = Locale.current.identifier
     var launchAtLogin: Bool = false
+    var historyEnabled: Bool = true
 
     init() {}
 
@@ -22,6 +23,7 @@ struct AppSettings: Codable {
         interactionMode = try c.decodeIfPresent(PushToTalkHotkey.InteractionMode.self, forKey: .interactionMode) ?? .holdToTalk
         localeIdentifier = try c.decodeIfPresent(String.self, forKey: .localeIdentifier) ?? Locale.current.identifier
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? true
     }
 
     private static let defaultsKey = "com.brewedai.pour.settings"

@@ -1,5 +1,6 @@
 import DesignKit
 import FlowCore
+import HistoryKit
 import SwiftUI
 
 struct TranscriptionsView: View {

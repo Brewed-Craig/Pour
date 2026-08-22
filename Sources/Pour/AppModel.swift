@@ -1,6 +1,7 @@
 import DictionaryKit
 import FlowCore
 import Foundation
+import HistoryKit
 import HotkeyKit
 import Observation
 import ServiceManagement
@@ -13,7 +14,7 @@ import ServiceManagement
 final class AppModel {
 
     let dictionary = DictionaryStore()
-    let history = HistoryStore()
+    let history: HistoryStore
     let controller: DictationController
     private(set) var settings: AppSettings
 
@@ -43,6 +44,7 @@ final class AppModel {
         // Pour from Login Items in System Settings directly) — reconcile on launch.
         loaded.launchAtLogin = SMAppService.mainApp.status == .enabled
         settings = loaded
+        history = HistoryStore(enabled: loaded.historyEnabled)
         controller = DictationController(
             dictionary: dictionary,
             hotkeyConfig: loaded.hotkeyConfig,
@@ -64,13 +66,13 @@ final class AppModel {
         }
         controller.onDelivered = { [weak self] text, appName, strategy, elapsed, hits in
             guard let self else { return }
-            let entry = self.history.record(
+            guard let entry = self.history.record(
                 text: text,
                 appName: appName,
                 strategy: strategy.rawValue,
                 elapsedMS: Int((elapsed * 1000).rounded()),
                 hits: hits
-            )
+            ) else { return }
             self.onDeliveredEntry?(entry)
         }
     }
@@ -122,5 +124,15 @@ final class AppModel {
             settings.launchAtLogin = SMAppService.mainApp.status == .enabled
         }
         settings.save()
+    }
+
+    func setHistoryEnabled(_ enabled: Bool) {
+        settings.historyEnabled = enabled
+        settings.save()
+        history.setEnabled(enabled)
+    }
+
+    func clearHistory() {
+        history.clear()
     }
 }

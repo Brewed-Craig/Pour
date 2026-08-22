@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var availableLocales: [Locale] = []
     @State private var downloadProgress: Double?
+    @State private var confirmingHistoryClear = false
 
     var body: some View {
         ScrollView {
@@ -21,6 +22,37 @@ struct SettingsView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .tint(PourColor.amber)
+                    }
+                }
+
+                settingsCard(title: "Privacy") {
+                    VStack(alignment: .leading, spacing: PourSpace.sm) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: PourSpace.xxs) {
+                                Text("Enable History")
+                                    .font(PourFont.body(13))
+                                    .foregroundStyle(PourColor.text)
+                                Text("Save transcripts locally for up to five days.")
+                                    .font(PourFont.callout())
+                                    .foregroundStyle(PourColor.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: historyEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(PourColor.amber)
+                        }
+                        Divider().overlay(PourColor.borderHairline)
+                        HStack {
+                            Text("Delete every saved transcript from this Mac.")
+                                .font(PourFont.callout())
+                                .foregroundStyle(PourColor.textMuted)
+                            Spacer()
+                            Button("Clear History", role: .destructive) {
+                                confirmingHistoryClear = true
+                            }
+                            .disabled(model.history.entries.isEmpty)
+                        }
                     }
                 }
 
@@ -104,6 +136,18 @@ struct SettingsView: View {
         .task {
             availableLocales = await AppleSpeechEngine.supportedLocales()
         }
+        .confirmationDialog(
+            "Clear all transcription history?",
+            isPresented: $confirmingHistoryClear,
+            titleVisibility: .visible
+        ) {
+            Button("Clear History", role: .destructive) {
+                model.clearHistory()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes every saved transcript from this Mac.")
+        }
     }
 
     @ViewBuilder
@@ -154,6 +198,13 @@ struct SettingsView: View {
         Binding(
             get: { model.settings.launchAtLogin },
             set: { model.setLaunchAtLogin($0) }
+        )
+    }
+
+    private var historyEnabled: Binding<Bool> {
+        Binding(
+            get: { model.settings.historyEnabled },
+            set: { model.setHistoryEnabled($0) }
         )
     }
 

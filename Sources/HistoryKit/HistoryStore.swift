@@ -1,13 +1,12 @@
 import DictionaryKit
 import Foundation
 import Observation
+import PrivacyKit
 
-/// One fired correction, flattened to a persistable, display-ready shape — decoupled
-/// from `CorrectionSource` so the on-disk format doesn't move every time that enum does.
-struct HistoryCorrection: Codable, Hashable, Sendable {
-    let matchedText: String
-    let replacement: String
-    let label: String // "Dictionary: cloud code → Claude Code" / "Vocabulary: Claude Code"
+public struct HistoryCorrection: Codable, Hashable, Sendable {
+    public let matchedText: String
+    public let replacement: String
+    public let label: String
 
     init(_ hit: CorrectionHit) {
         matchedText = hit.matchedText
@@ -21,16 +20,16 @@ struct HistoryCorrection: Codable, Hashable, Sendable {
     }
 }
 
-struct HistoryEntry: Identifiable, Codable, Sendable {
-    let id: UUID
-    let date: Date
-    let text: String
-    let appName: String?
-    let strategy: String
-    let elapsedMS: Int
-    let corrections: [HistoryCorrection]
+public struct HistoryEntry: Identifiable, Codable, Sendable {
+    public let id: UUID
+    public let date: Date
+    public let text: String
+    public let appName: String?
+    public let strategy: String
+    public let elapsedMS: Int
+    public let corrections: [HistoryCorrection]
 
-    init(text: String, appName: String?, strategy: String, elapsedMS: Int, corrections: [HistoryCorrection]) {
+    public init(text: String, appName: String?, strategy: String, elapsedMS: Int, corrections: [HistoryCorrection]) {
         id = UUID()
         date = Date()
         self.text = text
@@ -41,33 +40,34 @@ struct HistoryEntry: Identifiable, Codable, Sendable {
     }
 }
 
-/// Past transcriptions, most recent first. Persisted as a single JSON file, pruned to
-/// a rolling 5-day window — Pour's history is what you dictated recently, not an
-/// indefinite archive.
+/// A rolling five-day local transcription history with an explicit privacy off switch.
 @MainActor
 @Observable
-final class HistoryStore {
-
-    private(set) var entries: [HistoryEntry] = []
+public final class HistoryStore {
+    public private(set) var entries: [HistoryEntry] = []
+    public private(set) var isEnabled: Bool
 
     private let fileURL: URL
     private static let retention: TimeInterval = 5 * 24 * 60 * 60
 
-    init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil, enabled: Bool = true) {
+        isEnabled = enabled
         if let fileURL {
             self.fileURL = fileURL
         } else {
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Pour", isDirectory: true)
-            try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            try? SecureLocalStorage.prepareDirectory(support)
             self.fileURL = support.appendingPathComponent("history.json")
         }
+        try? SecureLocalStorage.protectFile(self.fileURL)
         load()
         prune()
     }
 
     @discardableResult
-    func record(text: String, appName: String?, strategy: String, elapsedMS: Int, hits: [CorrectionHit]) -> HistoryEntry {
+    public func record(text: String, appName: String?, strategy: String, elapsedMS: Int, hits: [CorrectionHit]) -> HistoryEntry? {
+        guard isEnabled else { return nil }
         let entry = HistoryEntry(
             text: text,
             appName: appName,
@@ -81,15 +81,24 @@ final class HistoryStore {
         return entry
     }
 
-    private func prune() {
-        let cutoff = Date().addingTimeInterval(-Self.retention)
-        entries.removeAll { $0.date < cutoff }
+    public func setEnabled(_ enabled: Bool) {
+        isEnabled = enabled
     }
 
-    func search(_ query: String) -> [HistoryEntry] {
+    public func clear() {
+        entries.removeAll()
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    public func search(_ query: String) -> [HistoryEntry] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return entries }
         return entries.filter { $0.text.lowercased().contains(q) || ($0.appName?.lowercased().contains(q) ?? false) }
+    }
+
+    private func prune() {
+        let cutoff = Date().addingTimeInterval(-Self.retention)
+        entries.removeAll { $0.date < cutoff }
     }
 
     private func load() {
@@ -101,6 +110,11 @@ final class HistoryStore {
 
     private func save() {
         guard let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            try SecureLocalStorage.protectFile(fileURL)
+        } catch {
+            // History is best-effort; failed persistence must never interrupt dictation.
+        }
     }
 }

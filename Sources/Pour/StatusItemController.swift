@@ -1,4 +1,5 @@
 import AppKit
+import HistoryKit
 import CoreGraphics
 import DesignKit
 import FlowCore

@@ -117,9 +117,14 @@ Change the key itself from Settings (click the field, then press a key), or set 
   speech model from Apple when a locale is used for the first time.
 - Transcripts and target-app names are stored locally in
   `~/Library/Application Support/Pour/history.json` and automatically removed after five days.
-- Dictionary entries and settings stay in the current macOS user account.
+  History can be disabled or cleared immediately in Settings.
+- History and dictionary files use owner-only permissions; dictionary entries and settings stay
+  in the current macOS user account.
 - When direct Accessibility insertion is unavailable, Pour briefly places the transcript on the
-  clipboard, pastes it, and restores the previous clipboard contents if nothing else changed them.
+  clipboard for about 370 ms, pastes it, and restores the previous clipboard contents if nothing
+  else changed them. Pour marks this item as transient and concealed for compatible clipboard
+  managers, but another process actively monitoring the clipboard could still read it during that
+  brief window.
 
 ---
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PrivacyKit
 
 /// Owns `dictionary.txt`: loads it, saves it, watches it for edits made outside the
 /// app, and answers the two questions the rest of Pour needs — "what should I bias
@@ -22,9 +23,10 @@ public final class DictionaryStore {
         } else {
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Pour", isDirectory: true)
-            try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            try? SecureLocalStorage.prepareDirectory(support)
             self.fileURL = support.appendingPathComponent("dictionary.txt")
         }
+        try? SecureLocalStorage.protectFile(self.fileURL)
         load()
         startWatching()
     }
@@ -50,6 +52,7 @@ public final class DictionaryStore {
         lastWrittenContent = content
         do {
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
+            try SecureLocalStorage.protectFile(fileURL)
         } catch {
             loadError = "Couldn't save the dictionary: \(error.localizedDescription)"
         }

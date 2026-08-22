@@ -1,5 +1,6 @@
 import AppKit
 import DesignKit
+import HistoryKit
 import SwiftUI
 
 struct HistoryRowView: View {

@@ -14,6 +14,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "HotkeyKit", swiftSettings: mode),
+        .target(name: "PrivacyKit", swiftSettings: mode),
         .target(name: "AudioCapture", swiftSettings: mode),
         .target(name: "TranscriptionKit", swiftSettings: mode),
         .target(name: "InjectKit", swiftSettings: mode),
@@ -22,7 +23,8 @@ let package = Package(
             resources: [.copy("Resources")],
             swiftSettings: mode
         ),
-        .target(name: "DictionaryKit", swiftSettings: mode),
+        .target(name: "DictionaryKit", dependencies: ["PrivacyKit"], swiftSettings: mode),
+        .target(name: "HistoryKit", dependencies: ["DictionaryKit", "PrivacyKit"], swiftSettings: mode),
         .target(
             name: "FlowCore",
             dependencies: ["HotkeyKit", "AudioCapture", "TranscriptionKit", "InjectKit", "DictionaryKit"],
@@ -30,13 +32,19 @@ let package = Package(
         ),
         .executableTarget(
             name: "Pour",
-            dependencies: ["FlowCore", "DesignKit", "DictionaryKit", "TranscriptionKit", "HotkeyKit"],
+            dependencies: ["FlowCore", "DesignKit", "DictionaryKit", "HistoryKit", "TranscriptionKit", "HotkeyKit", "PrivacyKit"],
             swiftSettings: mode
         ),
         .executableTarget(
             name: "RiskWarningChecks",
             dependencies: ["DictionaryKit"],
             path: "Tests/RiskWarningChecks",
+            swiftSettings: mode
+        ),
+        .executableTarget(
+            name: "PrivacyChecks",
+            dependencies: ["HistoryKit", "PrivacyKit"],
+            path: "Tests/PrivacyChecks",
             swiftSettings: mode
         )
     ]
