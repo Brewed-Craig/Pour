@@ -1,13 +1,12 @@
-# Parakeet engine — in progress, paused here
+# Parakeet engine
 
-Started: swapping in a second `SpeechEngine` (Parakeet, via [FluidAudio](https://github.com/FluidInference/FluidAudio))
-alongside Apple's SpeechAnalyzer. Paused mid-session because the first live download attempt
-surfaced a real concurrency bug (below) that deserves a clear head, not a rushed patch — see
-the "don't mess with base functionality" instruction this was built under.
+A second `SpeechEngine` (Parakeet, via [FluidAudio](https://github.com/FluidInference/FluidAudio))
+alongside Apple's SpeechAnalyzer, switchable in Settings → Model → Engine.
 
-**Current state: safe.** Apple's engine is untouched and confirmed working. The Parakeet path
-is wired end-to-end and reachable from Settings, but has not completed a successful model
-download in testing yet.
+**Status: working, lightly tested.** A model download completed successfully, the app
+transcribed and delivered a real dictated sentence through it, and the re-entrancy bug that
+paused this work mid-session has been fixed and retested. Apple's engine is untouched and
+remains the default for anyone who doesn't open the picker.
 
 ## What's done
 
@@ -15,9 +14,11 @@ download in testing yet.
   FluidAudio's `StreamingEouAsrManager` (an actor). Bridges the actor's async API into
   `SpeechEngine`'s synchronous, audio-thread-safe `feed(_:)` the same way `AppleSpeechEngine`
   bridges `SpeechAnalyzer` — buffers queue into an `AsyncStream`, a background `Task` drains it.
-- `DictationController.engineFactory` — new injectable property
+- `DictationController.engineFactory` — injectable property
   (`(Locale, ((Double) -> Void)?) async throws -> any SpeechEngine`), defaulting to Apple's
   engine. This is the whole seam; `FlowCore` still doesn't know Parakeet exists.
+- `DictationController.start()` is generation-guarded (see "Re-entrancy fix" below) — safe to
+  call again (an engine or locale switch) before a prior call has resolved.
 - `AppSettings.engineKind: EngineKind` (`.apple` / `.parakeet`), default `.apple`, decoded with
   a fallback so existing users' settings files aren't affected.
 - `AppModel.setEngineKind(_:onDownloadProgress:)` — swaps the factory and restarts the
@@ -27,57 +28,56 @@ download in testing yet.
 - `Package.swift` — FluidAudio pinned to `exact: "0.15.6"` (confirmed API-compatible with the
   code above by diffing `main` against the tag before writing anything).
 
-## What's confirmed working
+## Confirmed live
 
 - Everything builds clean, including a full `./build.sh app` release build.
-- Apple engine, launched fresh: `Ready · press ` to dictate` — unaffected, verified via the
-  status line after every change below.
-- Switching Settings → Engine → Parakeet **does** trigger a real download with live progress
-  reporting (`FluidAudio`'s `ProgressHandler` → the same `downloadProgress` UI Apple's asset
-  download already uses). Watched it move 0% → ~49% in testing.
+- Apple engine, launched fresh: `Ready · press ` to dictate` — unaffected throughout.
+- Switching Settings → Engine → Parakeet triggers a real download with live progress reporting
+  (`FluidAudio`'s `ProgressHandler` → the same UI Apple's asset download already uses).
+- **A Parakeet model finished loading and transcribed real speech.** A dictated sentence was
+  captured, transcribed, corrected, and delivered into another app (Ghostty) via the normal
+  paste path — the full pipeline, not just the load.
 - A genuinely corrupted download (`weight.bin` empty file) was caught by FluidAudio's own
-  validation and surfaced correctly through the existing `.blocked(reason)` state → "Retry
-  Setup" flow — the error path works, unchanged from how Apple engine failures already behave.
+  validation and surfaced correctly through the existing `.blocked(reason)` → "Retry Setup" flow.
+- **Re-entrancy fix retested live**: rapidly clicking Parakeet then Apple in Settings (to force
+  two `start()` calls to overlap) now settles cleanly on whichever was clicked last — no stuck
+  "Downloading" state, no stale engine left running.
 
-## What's NOT confirmed
+## Re-entrancy fix (was the blocker; now fixed)
 
-- **A successful end-to-end Parakeet model load.** Two live attempts both hit real problems
-  (a corrupted download, then the concurrency bug below) before finishing. Never got to test
-  actual transcription quality/latency.
+`start()` didn't cancel a still-in-flight prior call. Switching engines mid-download let two
+loads race: both could try to commit `self.engine`/`self.capture` with no ordering guarantee,
+and both `onDownloadProgress` closures stayed alive and kept firing after being superseded —
+observed as the Settings UI showing "Downloading speech model… 26%" for an *abandoned* attempt
+several seconds after switching back to Apple.
+
+Fixed with a generation counter: `start()` bumps `startGeneration` and captures it; every commit
+point (permission-denied states, the engine/capture assignment, the progress forwarder, the
+error path) checks its captured generation against the current one and bails if superseded —
+discarding a stale-but-successful engine load via `cancelUtterance()` rather than letting it
+clobber whatever the newer call already set up. `Task` cancellation alone wasn't an option since
+the FluidAudio download call isn't itself cancellable.
+
+This wasn't Parakeet-specific — it was latent in `start()`/`updateLocale()` any time one was
+called before a prior call resolved, just far more likely to hit once an engine's setup can take
+much longer than Apple's near-instant path.
+
+## What's still not confirmed
+
+- **Transcription quality/latency over more than one real sentence.** Only one live dictation
+  has actually been evaluated end-to-end.
 - Whether `StreamingEouAsrManager`'s `setPartialTranscriptCallback` gives usably fast/accurate
-  live preview text once actually running.
+  live preview text during longer utterances, or whether it's better to suppress the preview and
+  only show `finish()`'s result.
+- Behavior on a slow/flaky connection beyond the one corrupted-file case already seen — the
+  progress-bar non-monotonicity noted below hasn't been re-checked since the re-entrancy fix.
 
-## Known bug — fix before doing anything else here
-
-**Calling `DictationController.start()` again while a previous `start()` is still awaiting its
-engine factory doesn't cancel the first call.** Reproduced: switch Settings → Engine to
-Parakeet (kicks off a slow download inside `start()`), then switch back to Apple before the
-download finishes. Both `start()` invocations run concurrently:
-
-- Both eventually try to assign `self.engine` / `self.capture` — no ordering guarantee, so
-  whichever finishes *last* wins, regardless of which one the user actually asked for last.
-- Both `onDownloadProgress` closures stay alive and keep firing — confirmed in testing: the
-  Settings UI kept showing "Downloading speech model… 26%" for the *abandoned* Parakeet
-  attempt several seconds after switching back to Apple.
-
-This isn't Parakeet-specific — it's latent in `start()`/`updateLocale()` any time one is called
-before a prior call resolves, just far more likely to be hit now that an engine's setup can
-take much longer than Apple's (which is usually near-instant after the first locale download).
-
-**Fix shape** (not yet implemented): give `DictationController` a generation counter or a
-cancellable `Task` for the in-flight `start()`, and have a new call cancel/ignore the stale
-one — e.g. store `private var startGeneration = 0`, increment at the top of `start()`, capture
-the value, and check it's still current before committing `self.engine`/`self.capture` and
-before invoking `onDownloadProgress`. `Task` cancellation alone won't help here since the
-FluidAudio download call isn't itself cancellable from what's been seen — a generation check is
-the reliable way to just discard the stale result when it eventually arrives.
-
-## Also worth knowing before picking this back up
+## Also worth knowing
 
 - **Progress isn't monotonic.** FluidAudio reports progress per-file across several required
-  model files (encoder/decoder/joint/tokenizer), so the UI saw it jump around (e.g. 40% → 12%)
-  as each new file's download started. Not a bug in the glue code — just don't be alarmed by it,
-  and consider smoothing it in the UI (track a running max) once the concurrency fix lands.
+  model files (encoder/decoder/joint/tokenizer), so the UI can jump around (e.g. 40% → 12%) as
+  each new file's download starts. Not a bug in the glue code — consider smoothing it in the UI
+  (track a running max) if it reads as broken to a first-time user.
 - **No contextual biasing wired for Parakeet.** `updateContext(vocabulary:)` is a no-op (uses
   `SpeechEngine`'s default) — FluidAudio's streaming EOU manager doesn't expose anything
   equivalent to Apple's `AnalysisContext` in what was reviewed. Dictionary correction (the
@@ -90,14 +90,11 @@ the reliable way to just discard the stale result when it eventually arrives.
   (FluidAudio's own default, not `~/Library/Application Support/Pour/`) — worth knowing if
   something needs a clean-slate re-download for testing.
 
-## Next session checklist
+## Next steps
 
-1. Fix the `start()` re-entrancy bug first — it's real and will keep corrupting test results
-   otherwise, including for the existing Apple/locale-switch path.
-2. Re-attempt the Parakeet download somewhere with a known-stable connection; the one corrupted
-   file suggests it may just have been this environment's network, not FluidAudio itself.
-3. Once a model loads successfully, actually dictate with it — verify latency, accuracy, and
-   whether the partial/preview text is worth showing live or better suppressed until `finish()`.
-4. Smooth the progress bar (running max) once (1) is fixed and this is worth polishing.
-5. Update `README.md`'s "Included now" / feature list once Parakeet is actually confirmed
-   working end-to-end — deliberately not done yet since it isn't.
+1. Dictate more, varied sentences on Parakeet to actually assess accuracy/latency against Apple
+   — only one sentence has been evaluated so far.
+2. Decide on the live-preview question above once there's more to go on.
+3. Smooth the progress bar (running max) if it's worth polishing.
+4. Update `README.md`'s "Included now" / feature list once Parakeet has more real testing behind
+   it — deliberately not done yet, since "worked once" isn't "confirmed."
