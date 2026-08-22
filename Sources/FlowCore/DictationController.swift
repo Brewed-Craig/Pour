@@ -89,6 +89,16 @@ public final class DictationController {
     private var target: InjectionTarget = .none
     private var releasedAt: CFAbsoluteTime = 0
 
+    /// Bumped at the top of every `start()`. `start()` can be called again (a locale
+    /// or engine switch) before a prior call's `engineFactory` await — which can take
+    /// a while for an engine that has to download a model — has resolved. Without this,
+    /// two `start()`s can race: both eventually try to commit `self.engine`/`self.capture`
+    /// and fire `onDownloadProgress`, with no guarantee the one the user actually asked
+    /// for last is the one that wins. Every commit point checks its captured generation
+    /// against the current one first and bails — discarding, not just ignoring, a stale
+    /// result — if it's been superseded.
+    private var startGeneration = 0
+
     /// How `start()` builds its engine. FlowCore doesn't know Parakeet (or any other
     /// engine) exists — the app layer swaps this in based on Settings' engine picker.
     /// Defaults to Apple's SpeechAnalyzer, so nothing about the base app changes for
@@ -130,6 +140,9 @@ public final class DictationController {
     /// Requests permissions, loads the speech model, warms the mic, and arms the hotkey.
     /// Safe to call again after the user grants a permission that was missing.
     public func start(onDownloadProgress: ((Double) -> Void)? = nil) async {
+        startGeneration += 1
+        let generation = startGeneration
+
         state = .starting
 
         // Retry after granting a permission comes back through here — don't leave a
@@ -140,21 +153,45 @@ public final class DictationController {
         engine = nil
 
         guard await Permissions.requestMicrophone() else {
+            guard generation == startGeneration else { return }
             state = .blocked("Pour needs microphone access.")
             return
         }
 
         guard Permissions.isAccessibilityTrusted else {
             Permissions.requestAccessibility()
+            guard generation == startGeneration else { return }
             state = .blocked("Pour needs Accessibility access. Grant it, then choose Retry.")
             return
         }
 
+        // Progress can arrive on any thread/executor (FluidAudio's download progress
+        // is @Sendable, not MainActor) and can keep firing for a while after this
+        // start() has been superseded — hop back and check the generation every time.
+        let progressForwarder: (Double) -> Void = { [weak self] fraction in
+            Task { @MainActor in
+                guard let self, generation == self.startGeneration else { return }
+                onDownloadProgress?(fraction)
+            }
+        }
+
         do {
-            let engine = try await engineFactory(locale, onDownloadProgress)
+            let engine = try await engineFactory(locale, progressForwarder)
+
+            guard generation == startGeneration else {
+                // A newer start() (a fast Retry, or another Settings change) won the
+                // race while this one was still loading — discard what was just built
+                // instead of letting it clobber whatever the newer call already set up.
+                await engine.cancelUtterance()
+                return
+            }
+
             let capture = MicrophoneCapture(targetFormat: engine.audioFormat)
             capture.onLevel = { [weak self] level in
-                Task { @MainActor in self?.level = level }
+                Task { @MainActor in
+                    guard let self, generation == self.startGeneration else { return }
+                    self.level = level
+                }
             }
             try capture.startEngine()
 
@@ -166,6 +203,7 @@ public final class DictationController {
 
             state = .idle
         } catch {
+            guard generation == startGeneration else { return }
             state = .blocked(error.localizedDescription)
         }
     }
