@@ -133,12 +133,23 @@ public enum TextInjector {
 
     // MARK: - Strategy 2: clipboard + ⌘V
 
+    /// Clipboard-history managers (Maccy, Pastebot, Clipy, and friends) respect these
+    /// de facto marker types and skip recording an item that carries them — doesn't
+    /// stop a deliberately malicious poller, but it's a real, free mitigation for the
+    /// transcript otherwise sitting on the general pasteboard for ~370ms.
+    private static let transientMarkerType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+    private static let concealedMarkerType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+
     private static func pasteViaClipboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         let saved = snapshot(of: pasteboard)
 
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setData(Data(), forType: transientMarkerType)
+        item.setData(Data(), forType: concealedMarkerType)
+        pasteboard.writeObjects([item])
         let ourChangeCount = pasteboard.changeCount
 
         // A beat for the pasteboard write to settle before the target app reads it.
