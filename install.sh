@@ -102,6 +102,8 @@ bold "Building Pour…"
 
 POUR_BUILT_APP="$POUR_SOURCE_DIR/build/$APP_NAME.app"
 [[ -d "$POUR_BUILT_APP" ]] || die "The build completed without producing $APP_NAME.app."
+[[ -f "$POUR_BUILT_APP/Contents/Resources/Fonts/Inter-Variable.ttf" ]] \
+  || die "The built app is missing its required DesignKit resources."
 POUR_BUILT_BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "$POUR_BUILT_APP/Contents/Info.plist")"
 [[ "$POUR_BUILT_BUNDLE_ID" == "$BUNDLE_ID" ]] \
   || die "The built app has an unexpected bundle identifier: $POUR_BUILT_BUNDLE_ID"
@@ -142,6 +144,8 @@ else
 fi
 
 codesign --verify "$POUR_TARGET_APP" || die "The installed app's signature is invalid."
+[[ -f "$POUR_TARGET_APP/Contents/Resources/Fonts/Inter-Variable.ttf" ]] \
+  || die "The installed app is missing its required DesignKit resources."
 
 bold "Installed Pour successfully."
 POUR_SIGNATURE_INFO="$(codesign -dvv "$POUR_TARGET_APP" 2>&1 || true)"
