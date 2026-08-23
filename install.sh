@@ -70,9 +70,19 @@ POUR_ARCHIVE="$POUR_TEMP_DIR/source.tar.gz"
 POUR_SOURCE_ROOT="$POUR_TEMP_DIR/source"
 POUR_STAGED_APP=""
 POUR_BACKUP_APP=""
+POUR_TARGET_APP=""
 
 cleanup() {
   local status=$?
+  if [[ "$status" -ne 0 && -n "$POUR_BACKUP_APP" && -e "$POUR_BACKUP_APP" \
+        && -n "$POUR_TARGET_APP" && ! -e "$POUR_TARGET_APP" ]]; then
+    if mv "$POUR_BACKUP_APP" "$POUR_TARGET_APP"; then
+      POUR_BACKUP_APP=""
+      warn "Installation was interrupted; the previous Pour app was restored."
+    else
+      warn "Couldn't restore the previous app. Its backup remains at $POUR_BACKUP_APP"
+    fi
+  fi
   if [[ -n "$POUR_STAGED_APP" && -e "$POUR_STAGED_APP" ]]; then
     rm -rf "$POUR_STAGED_APP"
   fi
@@ -82,6 +92,8 @@ cleanup() {
   return "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 bold "Downloading $POUR_REPOSITORY at ${POUR_REF}…"
 mkdir -p "$POUR_SOURCE_ROOT"
