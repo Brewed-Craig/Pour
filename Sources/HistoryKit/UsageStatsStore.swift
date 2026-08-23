@@ -170,7 +170,7 @@ public final class UsageStatsStore {
 
         for dayIndex in daily.indices where daily[dayIndex].apps.isEmpty {
             let usageDay = daily[dayIndex].day
-            guard let entries = entriesByDay[usageDay], !entries.isEmpty else { continue }
+            let entries = entriesByDay[usageDay] ?? []
 
             var apps: [DailyAppUsage] = []
             var migratedWords = 0
@@ -204,7 +204,18 @@ public final class UsageStatsStore {
             guard !apps.isEmpty,
                   migratedWords <= daily[dayIndex].wordCount,
                   migratedDictations <= daily[dayIndex].dictationCount
-            else { continue }
+            else {
+                let unknown = Self.appIdentity(bundleIdentifier: nil, appName: nil)
+                daily[dayIndex].apps = [DailyAppUsage(
+                    id: unknown.id,
+                    bundleIdentifier: nil,
+                    appName: unknown.appName,
+                    wordCount: daily[dayIndex].wordCount,
+                    dictationCount: daily[dayIndex].dictationCount
+                )]
+                migratedDays += 1
+                continue
+            }
 
             let remainingWords = daily[dayIndex].wordCount - migratedWords
             let remainingDictations = daily[dayIndex].dictationCount - migratedDictations

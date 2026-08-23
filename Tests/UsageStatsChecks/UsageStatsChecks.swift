@@ -31,7 +31,11 @@ func checkLegacyMigration(in root: URL) throws {
 func checkHistoryBackfill(in root: URL) throws {
     let file = root.appendingPathComponent("history-backfill.json")
     let today = Calendar.current.startOfDay(for: Date())
-    let legacy = [LegacyDailyUsage(day: today, wordCount: 12, dictationCount: 3)]
+    let olderDay = Calendar.current.date(byAdding: .day, value: -10, to: today)!
+    let legacy = [
+        LegacyDailyUsage(day: today, wordCount: 12, dictationCount: 3),
+        LegacyDailyUsage(day: olderDay, wordCount: 9, dictationCount: 2)
+    ]
     try JSONEncoder().encode(legacy).write(to: file)
 
     let store = UsageStatsStore(fileURL: file)
@@ -42,13 +46,13 @@ func checkHistoryBackfill(in root: URL) throws {
 
     require(store.backfillAppUsage(from: entries) { name in
         name == "ChatGPT" ? "com.openai.chat" : nil
-    } == 1, "legacy day was not backfilled")
+    } == 2, "legacy days were not backfilled")
     let totals = store.appTotals(lastDays: nil)
     require(totals.first(where: { $0.bundleIdentifier == "com.openai.chat" })?.words == 3, "ChatGPT history was not migrated with its bundle ID")
     require(totals.first(where: { $0.appName == "Google Chrome" })?.words == 2, "Chrome history was not migrated")
     let unknown = totals.first(where: { $0.appName == "Unknown App" })
-    require(unknown?.words == 7 && unknown?.dictations == 1, "unattributable totals were not preserved")
-    require(store.allTime.words == 12 && store.allTime.dictations == 3, "backfill changed aggregate totals")
+    require(unknown?.words == 16 && unknown?.dictations == 3, "unattributable totals were not preserved")
+    require(store.allTime.words == 21 && store.allTime.dictations == 5, "backfill changed aggregate totals")
     require(store.backfillAppUsage(from: entries) == 0, "backfill was not idempotent")
 
     let reloaded = UsageStatsStore(fileURL: file)
