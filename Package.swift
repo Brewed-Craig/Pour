@@ -56,6 +56,12 @@ let package = Package(
             dependencies: ["HistoryKit", "PrivacyKit"],
             path: "Tests/PrivacyChecks",
             swiftSettings: mode
+        ),
+        .executableTarget(
+            name: "UsageStatsChecks",
+            dependencies: ["HistoryKit"],
+            path: "Tests/UsageStatsChecks",
+            swiftSettings: mode
         )
     ]
 )
