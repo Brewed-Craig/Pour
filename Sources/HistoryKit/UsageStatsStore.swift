@@ -156,6 +156,77 @@ public final class UsageStatsStore {
     public var last30Days: Totals { totals(lastDays: 30) }
     public var allTime: Totals { totals(lastDays: nil) }
 
+    /// Fills app breakdowns for legacy aggregate-only days using transcript history
+    /// that is still available locally. Existing app breakdowns are never touched,
+    /// so this is safe to call on every launch without double-counting.
+    @discardableResult
+    public func backfillAppUsage(
+        from history: [HistoryEntry],
+        bundleIdentifierForAppName: (String) -> String? = { _ in nil }
+    ) -> Int {
+        let calendar = Calendar.current
+        let entriesByDay = Dictionary(grouping: history) { calendar.startOfDay(for: $0.date) }
+        var migratedDays = 0
+
+        for dayIndex in daily.indices where daily[dayIndex].apps.isEmpty {
+            let usageDay = daily[dayIndex].day
+            guard let entries = entriesByDay[usageDay], !entries.isEmpty else { continue }
+
+            var apps: [DailyAppUsage] = []
+            var migratedWords = 0
+            var migratedDictations = 0
+
+            for entry in entries {
+                let wordCount = entry.text.split(whereSeparator: \.isWhitespace).count
+                guard wordCount > 0 else { continue }
+
+                let bundleIdentifier = entry.appName.flatMap(bundleIdentifierForAppName)
+                let identity = Self.appIdentity(bundleIdentifier: bundleIdentifier, appName: entry.appName)
+                if let index = apps.firstIndex(where: { $0.id == identity.id }) {
+                    apps[index].wordCount += wordCount
+                    apps[index].dictationCount += 1
+                } else {
+                    apps.append(DailyAppUsage(
+                        id: identity.id,
+                        bundleIdentifier: identity.bundleIdentifier,
+                        appName: identity.appName,
+                        wordCount: wordCount,
+                        dictationCount: 1
+                    ))
+                }
+                migratedWords += wordCount
+                migratedDictations += 1
+            }
+
+            // A deleted transcript or history-disabled period can leave only part of
+            // a day's aggregate attributable. Keep that remainder visible without
+            // guessing which app it belonged to.
+            guard !apps.isEmpty,
+                  migratedWords <= daily[dayIndex].wordCount,
+                  migratedDictations <= daily[dayIndex].dictationCount
+            else { continue }
+
+            let remainingWords = daily[dayIndex].wordCount - migratedWords
+            let remainingDictations = daily[dayIndex].dictationCount - migratedDictations
+            if remainingWords > 0 || remainingDictations > 0 {
+                let unknown = Self.appIdentity(bundleIdentifier: nil, appName: nil)
+                apps.append(DailyAppUsage(
+                    id: unknown.id,
+                    bundleIdentifier: nil,
+                    appName: unknown.appName,
+                    wordCount: remainingWords,
+                    dictationCount: remainingDictations
+                ))
+            }
+
+            daily[dayIndex].apps = apps
+            migratedDays += 1
+        }
+
+        if migratedDays > 0 { save() }
+        return migratedDays
+    }
+
     public func appTotals(lastDays: Int?) -> [AppUsageTotals] {
         let relevant = entries(lastDays: lastDays)
         var totals: [String: AppUsageTotals] = [:]

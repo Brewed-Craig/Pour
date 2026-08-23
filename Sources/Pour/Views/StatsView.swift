@@ -301,10 +301,13 @@ private struct AppIcon: View {
     }
 
     private var image: NSImage? {
-        guard let bundleIdentifier = app.bundleIdentifier,
-              let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
-        else { return nil }
-        return NSWorkspace.shared.icon(forFile: applicationURL.path)
+        if let bundleIdentifier = app.bundleIdentifier,
+           let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+            return NSWorkspace.shared.icon(forFile: applicationURL.path)
+        }
+
+        guard let application = InstalledApplicationResolver.application(named: app.appName) else { return nil }
+        return NSWorkspace.shared.icon(forFile: application.url.path)
     }
 }
 

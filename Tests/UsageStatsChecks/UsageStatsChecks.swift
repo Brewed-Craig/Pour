@@ -28,6 +28,34 @@ func checkLegacyMigration(in root: URL) throws {
 }
 
 @MainActor
+func checkHistoryBackfill(in root: URL) throws {
+    let file = root.appendingPathComponent("history-backfill.json")
+    let today = Calendar.current.startOfDay(for: Date())
+    let legacy = [LegacyDailyUsage(day: today, wordCount: 12, dictationCount: 3)]
+    try JSONEncoder().encode(legacy).write(to: file)
+
+    let store = UsageStatsStore(fileURL: file)
+    let entries = [
+        HistoryEntry(date: today, text: "one two three", appName: "ChatGPT", strategy: "test", elapsedMS: 1, corrections: []),
+        HistoryEntry(date: today, text: "four five", appName: "Google Chrome", strategy: "test", elapsedMS: 1, corrections: [])
+    ]
+
+    require(store.backfillAppUsage(from: entries) { name in
+        name == "ChatGPT" ? "com.openai.chat" : nil
+    } == 1, "legacy day was not backfilled")
+    let totals = store.appTotals(lastDays: nil)
+    require(totals.first(where: { $0.bundleIdentifier == "com.openai.chat" })?.words == 3, "ChatGPT history was not migrated with its bundle ID")
+    require(totals.first(where: { $0.appName == "Google Chrome" })?.words == 2, "Chrome history was not migrated")
+    let unknown = totals.first(where: { $0.appName == "Unknown App" })
+    require(unknown?.words == 7 && unknown?.dictations == 1, "unattributable totals were not preserved")
+    require(store.allTime.words == 12 && store.allTime.dictations == 3, "backfill changed aggregate totals")
+    require(store.backfillAppUsage(from: entries) == 0, "backfill was not idempotent")
+
+    let reloaded = UsageStatsStore(fileURL: file)
+    require(reloaded.appTotals(lastDays: nil) == totals, "backfill did not survive persistence")
+}
+
+@MainActor
 func checkAppAggregation(in root: URL) throws {
     let file = root.appendingPathComponent("app-usage.json")
     let store = UsageStatsStore(fileURL: file)
@@ -85,6 +113,8 @@ enum UsageStatsChecks {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             try checkLegacyMigration(in: root)
             print("PASS: legacy stats migration")
+            try checkHistoryBackfill(in: root)
+            print("PASS: retained history app backfill")
             try checkAppAggregation(in: root)
             print("PASS: per-app stats aggregation")
         } catch {

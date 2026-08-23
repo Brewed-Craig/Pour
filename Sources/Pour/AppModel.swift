@@ -48,6 +48,9 @@ final class AppModel {
         loaded.launchAtLogin = SMAppService.mainApp.status == .enabled
         settings = loaded
         history = HistoryStore(enabled: loaded.historyEnabled)
+        usageStats.backfillAppUsage(from: history.entries) { appName in
+            InstalledApplicationResolver.application(named: appName)?.bundleIdentifier
+        }
         controller = DictationController(
             dictionary: dictionary,
             hotkeyConfig: loaded.hotkeyConfig,

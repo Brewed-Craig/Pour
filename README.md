@@ -138,6 +138,8 @@ Change the key itself from Settings (click the field, then press a key), or set 
   History can be disabled or cleared immediately in Settings.
 - Aggregate usage totals, including the names and bundle identifiers of apps you dictate into,
   are stored locally in `~/Library/Application Support/Pour/usage-stats.json`.
+  On upgrade, retained history is used to restore app names for existing totals. Usage older than
+  the five-day history window stays under `Unknown App` rather than being assigned incorrectly.
 - History and dictionary files use owner-only permissions; dictionary entries and settings stay
   in the current macOS user account.
 - When direct Accessibility insertion is unavailable, Pour briefly places the transcript on the
