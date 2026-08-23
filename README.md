@@ -186,6 +186,13 @@ dictation of every session.
 - Locale/model picker and settings window
 - Launch at Login (`SMAppService`)
 
+### Per-app stats
+
+See where you dictate most across the last 7 days, 30 days, or all time. App stats stay local
+with the rest of Pour's usage data.
+
+![Pour's Apps stats tab showing words dictated in ChatGPT and Google Chrome](Docs/Screenshots/apps-stats.jpg)
+
 ## Possible next steps
 
 - **RefineKit** — the cleanup pass (filler removal, backtrack resolution, list formatting) via
