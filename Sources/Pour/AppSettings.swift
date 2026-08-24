@@ -19,6 +19,8 @@ struct AppSettings: Codable {
     var localeIdentifier: String = Locale.current.identifier
     var launchAtLogin: Bool = false
     var historyEnabled: Bool = true
+    /// CoreAudio unique ID of the chosen input device. `nil` means "System Default."
+    var microphoneDeviceUniqueID: String? = nil
 
     init() {}
 
@@ -33,6 +35,7 @@ struct AppSettings: Codable {
         localeIdentifier = try c.decodeIfPresent(String.self, forKey: .localeIdentifier) ?? Locale.current.identifier
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? true
+        microphoneDeviceUniqueID = try c.decodeIfPresent(String.self, forKey: .microphoneDeviceUniqueID)
     }
 
     private static let defaultsKey = "com.brewedai.pour.settings"

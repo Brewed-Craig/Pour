@@ -51,7 +51,8 @@ final class AppModel {
         controller = DictationController(
             dictionary: dictionary,
             hotkeyConfig: loaded.hotkeyConfig,
-            locale: Locale(identifier: loaded.localeIdentifier)
+            locale: Locale(identifier: loaded.localeIdentifier),
+            deviceUniqueID: loaded.microphoneDeviceUniqueID
         )
         controller.engineFactory = Self.engineFactory(for: loaded.engineKind)
 
@@ -157,6 +158,12 @@ final class AppModel {
             settings.launchAtLogin = SMAppService.mainApp.status == .enabled
         }
         settings.save()
+    }
+
+    func setMicrophoneDevice(_ uniqueID: String?) {
+        settings.microphoneDeviceUniqueID = uniqueID
+        settings.save()
+        controller.updateMicrophoneDevice(uniqueID)
     }
 
     func setHistoryEnabled(_ enabled: Bool) {

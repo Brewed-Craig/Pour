@@ -80,6 +80,7 @@ public final class DictationController {
     private var hotkeyConfig: PushToTalkHotkey.Config
     private var hotkey: PushToTalkHotkey
     private var locale: Locale
+    private var deviceUniqueID: String?
     private var engine: (any SpeechEngine)?
     private var capture: MicrophoneCapture?
 
@@ -108,11 +109,17 @@ public final class DictationController {
         try await AppleSpeechEngine.make(locale: locale, onDownloadProgress: onDownloadProgress)
     }
 
-    public init(dictionary: DictionaryStore, hotkeyConfig: PushToTalkHotkey.Config = .init(), locale: Locale = .current) {
+    public init(
+        dictionary: DictionaryStore,
+        hotkeyConfig: PushToTalkHotkey.Config = .init(),
+        locale: Locale = .current,
+        deviceUniqueID: String? = nil
+    ) {
         self.dictionary = dictionary
         self.hotkeyConfig = hotkeyConfig
         self.hotkey = PushToTalkHotkey(config: hotkeyConfig)
         self.locale = locale
+        self.deviceUniqueID = deviceUniqueID
     }
 
     /// Re-arms the tap with a new key combo. Safe to call while idle or mid-session —
@@ -133,6 +140,14 @@ public final class DictationController {
     public func updateLocale(_ newLocale: Locale, onDownloadProgress: ((Double) -> Void)? = nil) async {
         locale = newLocale
         await start(onDownloadProgress: onDownloadProgress)
+    }
+
+    /// Switches the input device Settings' mic picker points at. `nil` means the
+    /// system default. Cheaper than `start()` — swaps the device under the running
+    /// mic rather than tearing down and reloading the speech engine.
+    public func updateMicrophoneDevice(_ uniqueID: String?) {
+        deviceUniqueID = uniqueID
+        try? capture?.setPreferredDevice(uniqueID)
     }
 
     // MARK: - Bootstrap
@@ -186,7 +201,7 @@ public final class DictationController {
                 return
             }
 
-            let capture = MicrophoneCapture(targetFormat: engine.audioFormat)
+            let capture = MicrophoneCapture(targetFormat: engine.audioFormat, preferredDeviceUniqueID: deviceUniqueID)
             capture.onLevel = { [weak self] level in
                 Task { @MainActor in
                     guard let self, generation == self.startGeneration else { return }

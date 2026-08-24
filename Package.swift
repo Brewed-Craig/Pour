@@ -42,7 +42,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Pour",
-            dependencies: ["FlowCore", "DesignKit", "DictionaryKit", "HistoryKit", "TranscriptionKit", "ParakeetKit", "HotkeyKit", "PrivacyKit"],
+            dependencies: ["FlowCore", "AudioCapture", "DesignKit", "DictionaryKit", "HistoryKit", "TranscriptionKit", "ParakeetKit", "HotkeyKit", "PrivacyKit"],
             swiftSettings: mode
         ),
         .executableTarget(

@@ -1,3 +1,5 @@
+import AudioCapture
+import AVFoundation
 import DesignKit
 import HotkeyKit
 import SwiftUI
@@ -6,6 +8,7 @@ import TranscriptionKit
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var availableLocales: [Locale] = []
+    @State private var availableMicrophones: [MicrophoneDevice] = []
     @State private var downloadProgress: Double?
     @State private var confirmingHistoryClear = false
 
@@ -53,6 +56,29 @@ struct SettingsView: View {
                             }
                             .disabled(model.history.entries.isEmpty)
                         }
+                    }
+                }
+
+                settingsCard(title: "Microphone") {
+                    VStack(alignment: .leading, spacing: PourSpace.sm) {
+                        HStack {
+                            Text("Input device")
+                                .font(PourFont.body(13))
+                                .foregroundStyle(PourColor.text)
+                            Spacer()
+                            Picker("", selection: microphoneDeviceID) {
+                                Text("System Default").tag(Optional<String>.none)
+                                ForEach(availableMicrophones) { device in
+                                    Text(device.name).tag(Optional(device.id))
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(minWidth: 200)
+                            .tint(PourColor.blue500)
+                        }
+                        Text("Which mic Pour listens to. Follows the system default unless you pick one here.")
+                            .font(PourFont.callout())
+                            .foregroundStyle(PourColor.textMuted)
                     }
                 }
 
@@ -148,6 +174,13 @@ struct SettingsView: View {
         .task {
             availableLocales = await AppleSpeechEngine.supportedLocales()
         }
+        .task { refreshMicrophones() }
+        .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasConnectedNotification)) { _ in
+            refreshMicrophones()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasDisconnectedNotification)) { _ in
+            refreshMicrophones()
+        }
         .confirmationDialog(
             "Clear all transcription history?",
             isPresented: $confirmingHistoryClear,
@@ -210,6 +243,25 @@ struct SettingsView: View {
         Binding(
             get: { model.settings.launchAtLogin },
             set: { model.setLaunchAtLogin($0) }
+        )
+    }
+
+    private func refreshMicrophones() {
+        let devices = MicrophoneCapture.availableDevices()
+        // Keep the current selection visible in the list even if it just went
+        // offline, so the picker doesn't silently snap back to System Default.
+        if let selected = model.settings.microphoneDeviceUniqueID,
+           !devices.contains(where: { $0.id == selected }) {
+            availableMicrophones = devices + [MicrophoneDevice(id: selected, name: "Unavailable Device")]
+        } else {
+            availableMicrophones = devices
+        }
+    }
+
+    private var microphoneDeviceID: Binding<String?> {
+        Binding(
+            get: { model.settings.microphoneDeviceUniqueID },
+            set: { model.setMicrophoneDevice($0) }
         )
     }
 

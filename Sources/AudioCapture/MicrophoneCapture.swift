@@ -1,5 +1,17 @@
 import AVFoundation
+import CoreAudio
 import Foundation
+
+/// One selectable input device, for Settings' microphone picker.
+public struct MicrophoneDevice: Identifiable, Hashable, Sendable {
+    public let id: String // CoreAudio's persistent unique ID for the device
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
 
 /// A microphone that is always running.
 ///
@@ -38,6 +50,10 @@ public final class MicrophoneCapture {
     private var preRollFrames: AVAudioFrameCount = 0
     private var observer: NSObjectProtocol?
 
+    /// CoreAudio unique ID of the input device Settings asked for. `nil` means "system
+    /// default," which is also the fallback if this device has been unplugged.
+    private var preferredDeviceUniqueID: String?
+
     /// RMS level, 0...1, of the raw input — independent of the dictation gate, so the
     /// UI can show a live meter whether or not a capture is in progress. Called on the
     /// audio thread; hop to the main thread in the handler.
@@ -51,9 +67,10 @@ public final class MicrophoneCapture {
     private var levelFloor: Float = 0.0005
     private var levelPeak: Float = 0.01
 
-    public init(targetFormat: AVAudioFormat, preRollSeconds: Double = 0.3) {
+    public init(targetFormat: AVAudioFormat, preRollSeconds: Double = 0.3, preferredDeviceUniqueID: String? = nil) {
         self.targetFormat = targetFormat
         self.preRollCapacity = AVAudioFrameCount(targetFormat.sampleRate * preRollSeconds)
+        self.preferredDeviceUniqueID = preferredDeviceUniqueID
     }
 
     deinit {
@@ -62,10 +79,23 @@ public final class MicrophoneCapture {
 
     public var isRunning: Bool { engine.isRunning }
 
+    /// Every input device currently visible to the system, for Settings' picker.
+    /// Queried fresh each call — cheap, and callers only need it when the picker
+    /// is on screen or a device is plugged/unplugged.
+    public static func availableDevices() -> [MicrophoneDevice] {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        return discovery.devices.map { MicrophoneDevice(id: $0.uniqueID, name: $0.localizedName) }
+    }
+
     // MARK: - Engine lifecycle
 
     public func startEngine() throws {
         guard !engine.isRunning else { return }
+        applyPreferredDevice()
         try installTap()
 
         do {
@@ -98,6 +128,69 @@ public final class MicrophoneCapture {
         lock.unlock()
     }
 
+    /// Switches the input device Settings' mic picker points at. `nil` restores the
+    /// system default. Safe to call whether or not the engine is currently running —
+    /// if it is, the tap is torn down and rebuilt against the new device.
+    public func setPreferredDevice(_ uniqueID: String?) throws {
+        preferredDeviceUniqueID = uniqueID
+        guard engine.isRunning else { return }
+
+        engine.stop()
+        applyPreferredDevice()
+        try installTap()
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            throw Failure.engineStartFailed(error.localizedDescription)
+        }
+    }
+
+    /// Points the input node's underlying audio unit at `preferredDeviceUniqueID`.
+    /// Best-effort: an unresolvable ID (unplugged since it was chosen) just leaves the
+    /// system default in place rather than failing the whole engine start.
+    private func applyPreferredDevice() {
+        guard let uniqueID = preferredDeviceUniqueID,
+              var deviceID = Self.coreAudioDeviceID(forUniqueID: uniqueID),
+              let audioUnit = engine.inputNode.audioUnit
+        else { return }
+
+        AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+    }
+
+    /// Resolves a device's persistent UID (what `availableDevices()` hands out, and
+    /// what Settings stores) to the `AudioDeviceID` CoreAudio actually wants — the
+    /// latter isn't stable across reboots/replugs, so it's never persisted itself.
+    private static func coreAudioDeviceID(forUniqueID uniqueID: String) -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var uid = uniqueID as CFString
+        var deviceID = kAudioObjectUnknown
+        var propSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = withUnsafeMutablePointer(to: &uid) { uidPtr in
+            AudioObjectGetPropertyData(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                UInt32(MemoryLayout<CFString?>.size),
+                uidPtr,
+                &propSize,
+                &deviceID
+            )
+        }
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return deviceID
+    }
+
     private func installTap() throws {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
@@ -116,6 +209,7 @@ public final class MicrophoneCapture {
     private func handleConfigurationChange() {
         let wasRunning = engine.isRunning
         engine.stop()
+        applyPreferredDevice()
         try? installTap()
         if wasRunning {
             engine.prepare()
