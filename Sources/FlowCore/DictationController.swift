@@ -7,6 +7,22 @@ import HotkeyKit
 import InjectKit
 import TranscriptionKit
 
+/// Thread-safe "claim exactly once" flag. `awaitTranscriptionAndDeliver`'s normal
+/// completion and its watchdog timeout race on two different threads — this makes sure
+/// only whichever one gets there first acts, instead of both trying to settle the state.
+private final class SettleGuard: @unchecked Sendable {
+    private let lock = NSLock()
+    private var settled = false
+
+    func trySettle() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !settled else { return false }
+        settled = true
+        return true
+    }
+}
+
 /// The state machine from the architecture doc, minus the phases we haven't built.
 /// Phase 2 inserts `.refining` between `.finishing` and `.injecting`.
 public enum DictationState: Equatable {
@@ -147,7 +163,13 @@ public final class DictationController {
     /// mic rather than tearing down and reloading the speech engine.
     public func updateMicrophoneDevice(_ uniqueID: String?) {
         deviceUniqueID = uniqueID
-        try? capture?.setPreferredDevice(uniqueID)
+        do {
+            try capture?.setPreferredDevice(uniqueID)
+        } catch {
+            // Previously swallowed entirely — a failed switch (e.g. a Bluetooth route
+            // still negotiating) left capture silently dead with no feedback at all.
+            state = .blocked(error.localizedDescription)
+        }
     }
 
     // MARK: - Bootstrap
@@ -177,6 +199,17 @@ public final class DictationController {
             Permissions.requestAccessibility()
             guard generation == startGeneration else { return }
             state = .blocked("Pour needs Accessibility access. Grant it, then choose Retry.")
+            return
+        }
+
+        // Accessibility alone lets the push-to-talk event tap get created without
+        // erroring — it just never delivers a keystroke. This is the grant that
+        // actually makes the tap live, and it's easy to miss since nothing else
+        // surfaces its absence.
+        guard Permissions.isInputMonitoringTrusted else {
+            Permissions.requestInputMonitoring()
+            guard generation == startGeneration else { return }
+            state = .blocked("Pour needs Input Monitoring access to see the push-to-talk key. Grant it, then choose Retry.")
             return
         }
 
@@ -309,21 +342,65 @@ public final class DictationController {
         }
     }
 
+    /// `engine.endUtterance()` can, rarely, hang deep inside Apple's SpeechAnalyzer
+    /// framework — badly enough to block one of Swift Concurrency's own limited
+    /// cooperative-pool threads, which starves *everything* waiting on that pool,
+    /// including a `Task`-based timeout racing against it. That's why an in-process
+    /// `withThrowingTaskGroup` timeout here previously "fired" (its own sleep completed)
+    /// but the group's result never resumed. Worse: `finishCapture()` used to be awaited
+    /// directly by `perform(_:)` on the one serial command loop that also handles every
+    /// later press — a hang here wedged that loop forever, and no Retry or device switch
+    /// could ever recover without a full app restart.
+    ///
+    /// So the actual wait now happens in a detached, un-awaited task, and this function
+    /// returns as soon as it's launched that — the command loop is freed immediately,
+    /// regardless of what `endUtterance()` ends up doing. A `DispatchQueue` watchdog
+    /// (a different thread pool than Swift Concurrency's, and not vulnerable to the same
+    /// starvation) forces `state` back out of `.finishing` on a timeout either way.
     private func finishCapture() async {
         guard state == .capturing, let engine, let capture else { return }
 
+        let generation = startGeneration
         releasedAt = CFAbsoluteTimeGetCurrent()
         capture.endForwarding()
         state = .finishing
+
+        Task { [weak self] in
+            await self?.awaitTranscriptionAndDeliver(engine: engine, generation: generation)
+        }
+    }
+
+    private func awaitTranscriptionAndDeliver(engine: any SpeechEngine, generation: Int) async {
+        let settled = SettleGuard()
+
+        let watchdog = DispatchWorkItem { [weak self] in
+            guard let self, settled.trySettle(), generation == self.startGeneration else { return }
+            Task { await engine.cancelUtterance() }
+            Task { @MainActor in
+                self.preview = ""
+                self.state = .blocked("Transcription timed out.")
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: watchdog)
 
         let text: String
         do {
             text = try await engine.endUtterance()
         } catch {
+            guard settled.trySettle() else { return }
+            watchdog.cancel()
+            guard generation == startGeneration else { return }
             state = .blocked(error.localizedDescription)
             return
         }
 
+        guard settled.trySettle() else { return }
+        watchdog.cancel()
+        guard generation == startGeneration else { return }
+        deliverTranscript(text)
+    }
+
+    private func deliverTranscript(_ text: String) {
         guard !text.isEmpty else {
             preview = ""
             state = .idle
@@ -348,7 +425,11 @@ public final class DictationController {
     private func cancelCapture() async {
         guard state == .capturing || state == .finishing else { return }
         capture?.endForwarding()
-        await engine?.cancelUtterance()
+        // Not awaited — same reasoning as `awaitTranscriptionAndDeliver`'s watchdog
+        // cleanup: this calls back into the engine that may itself be the thing hung,
+        // and awaiting it here would put the hang right back on the serial command loop
+        // that Esc is supposed to escape from immediately.
+        if let engine { Task { await engine.cancelUtterance() } }
         preview = ""
         state = .idle
     }

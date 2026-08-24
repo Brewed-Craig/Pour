@@ -37,7 +37,8 @@ public enum TextInjector {
         "com.google.Chrome",
         "com.brave.Browser",
         "com.figma.Desktop",
-        "com.hnc.Discord"
+        "com.hnc.Discord",
+        "com.microsoft.teams2"
     ]
 
     private static let syntheticMarker: Int64 = 0x504F_5552 // "POUR"
