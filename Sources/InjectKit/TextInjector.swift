@@ -31,7 +31,23 @@ public enum TextInjector {
     /// Apps whose Accessibility text-setting is unreliable — mostly Chromium and Electron.
     /// These go straight to paste. Grow this list as you find more.
     public static var pasteOnlyBundleIDs: Set<String> = [
+        // Terminal hosts. Their focused text areas often claim that AXSelectedText is
+        // settable and return success while silently discarding the write. That made
+        // terminal programs such as Claude Code look like Pour had delivered text
+        // even though nothing appeared.
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "com.github.wez.wezterm",
+        "com.mitchellh.ghostty",
+        "dev.warp.Warp-Stable",
+        "net.kovidgoyal.kitty",
+        "org.alacritty",
+
+        // Electron code editors and their common release channels.
         "com.microsoft.VSCode",
+        "com.microsoft.VSCodeInsiders",
+        "com.todesktop.230313mzl4w4u92", // Cursor
+        "com.exafunction.windsurf",
         "com.tinyspeck.slackmacgap",
         "notion.id",
         "com.google.Chrome",
@@ -105,7 +121,14 @@ public enum TextInjector {
     public static func insert(_ text: String, into target: InjectionTarget) -> InjectionStrategy {
         guard !text.isEmpty else { return .accessibility }
 
-        let blocked = target.bundleID.map { pasteOnlyBundleIDs.contains($0) } ?? false
+        // Bundle identifiers are documented as case-insensitive. Some third-party
+        // apps do not use stable casing between release channels, so do not let a
+        // casing mismatch put them back on the unreliable Accessibility path.
+        let blocked = target.bundleID.map { bundleID in
+            pasteOnlyBundleIDs.contains { candidate in
+                candidate.caseInsensitiveCompare(bundleID) == .orderedSame
+            }
+        } ?? false
         if !blocked, let element = target.element, setSelectedText(text, on: element) {
             return .accessibility
         }
