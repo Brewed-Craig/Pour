@@ -207,6 +207,13 @@ public final class MicrophoneCapture {
               let audioUnit = engine.inputNode.audioUnit
         else { return }
 
+        // AVAudioEngine already follows the system-default input. Forcing the audio
+        // unit back onto that exact same device is not a no-op: with Bluetooth inputs
+        // it tears down the active HFP route while its 24 kHz format is still being
+        // negotiated, and the subsequent engine.start() can fail. Only override the
+        // unit when Settings actually points at a different device.
+        if deviceID == Self.defaultInputDeviceID() { return }
+
         // Setting CurrentDevice on a unit that's already been touched (even a "fresh"
         // AVAudioEngine's inputNode counts — it gets implicitly initialized as soon as
         // it's accessed) leaves the unit's cached stream format stale: it keeps
@@ -250,6 +257,26 @@ public final class MicrophoneCapture {
                 &deviceID
             )
         }
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return deviceID
+    }
+
+    private static func defaultInputDeviceID() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = kAudioObjectUnknown
+        var propSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &propSize,
+            &deviceID
+        )
         guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
         return deviceID
     }

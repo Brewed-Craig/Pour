@@ -48,6 +48,7 @@ public enum TextInjector {
         "com.microsoft.VSCodeInsiders",
         "com.todesktop.230313mzl4w4u92", // Cursor
         "com.exafunction.windsurf",
+        "ai.deepseek.harness",
         "com.tinyspeck.slackmacgap",
         "notion.id",
         "com.google.Chrome",
