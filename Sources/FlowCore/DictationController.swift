@@ -5,6 +5,7 @@ import DictionaryKit
 import Foundation
 import HotkeyKit
 import InjectKit
+import RefineKit
 import TranscriptionKit
 
 /// Thread-safe "claim exactly once" flag. `awaitTranscriptionAndDeliver`'s normal
@@ -30,13 +31,14 @@ public enum DictationState: Equatable {
     case idle
     case capturing
     case finishing
+    case refining
     case injecting
     /// Something is missing — a permission, a mic, a model. Carries a sentence for the UI.
     case blocked(String)
 
     public var isBusy: Bool {
         switch self {
-        case .capturing, .finishing, .injecting: return true
+        case .capturing, .finishing, .refining, .injecting: return true
         default: return false
         }
     }
@@ -82,7 +84,10 @@ public final class DictationController {
     public var onLevelChange: ((Float) -> Void)?
     /// Fired after a successful injection: the corrected text, the app name and bundle
     /// identifier it landed in, how it got there, the elapsed time, and corrections.
-    public var onDelivered: ((String, String?, String?, InjectionStrategy, TimeInterval, [CorrectionHit]) -> Void)?
+    public var onDelivered: ((RefinementResult, String, String?, String?, InjectionStrategy, TimeInterval, [CorrectionHit]) -> Void)?
+    /// Resolves global/per-app preferences captured with the destination at key-down.
+    public var configurationForTarget: ((String?) -> (AccuracyMode, RefinementConfiguration))?
+    public var onUndo: (() -> Void)?
 
     // MARK: Internals
 
@@ -105,6 +110,8 @@ public final class DictationController {
 
     private var target: InjectionTarget = .none
     private var releasedAt: CFAbsoluteTime = 0
+    private let refiner = LocalTranscriptRefiner()
+    private var lastDeliveryTarget: InjectionTarget?
 
     /// Bumped at the top of every `start()`. `start()` can be called again (a locale
     /// or engine switch) before a prior call's `engineFactory` await — which can take
@@ -397,29 +404,53 @@ public final class DictationController {
         guard settled.trySettle() else { return }
         watchdog.cancel()
         guard generation == startGeneration else { return }
-        deliverTranscript(text)
+        await deliverTranscript(text)
     }
 
-    private func deliverTranscript(_ text: String) {
+    private func deliverTranscript(_ text: String) async {
         guard !text.isEmpty else {
             preview = ""
             state = .idle
             return
         }
 
-        // The dictionary's correction pass — the guaranteed path, run before anything
-        // reaches the target app. RefineKit's cleanup pass and the length-ratio guard
-        // still slot in right here, ahead of injection.
-        let (corrected, hits) = dictionary.applyCorrections(to: text)
+        state = .refining
+        // Give SwiftUI/HUD observers a render opportunity before the inexpensive
+        // local pass completes; this is a yield, not an artificial latency delay.
+        await Task.yield()
+        let resolved = configurationForTarget?(target.bundleID)
+            ?? (.accurate, RefinementConfiguration())
+        let refinement = refiner.refineSynchronously(
+            text,
+            mode: resolved.0,
+            configuration: resolved.1
+        )
+
+        // Dictionary corrections remain the guaranteed final pass, after general
+        // cleanup, so a user's canonical spelling always wins.
+        let (corrected, hits) = dictionary.applyCorrections(to: refinement.refinedText)
         lastTranscript = corrected
         state = .injecting
 
         let strategy = TextInjector.insert(corrected, into: target)
+        lastDeliveryTarget = target
         let elapsed = CFAbsoluteTimeGetCurrent() - releasedAt
-        onDelivered?(corrected, target.appName, target.bundleID, strategy, elapsed, hits)
+        onDelivered?(refinement, corrected, target.appName, target.bundleID, strategy, elapsed, hits)
 
         preview = ""
         state = .idle
+    }
+
+    /// Reverts the last delivered text only while its destination app still has focus.
+    /// Returns false instead of risking an undo in an unrelated application.
+    @discardableResult
+    public func undoLastInsertion() -> Bool {
+        guard let lastDeliveryTarget,
+              TextInjector.undoLastInsertion(in: lastDeliveryTarget)
+        else { return false }
+        onUndo?()
+        self.lastDeliveryTarget = nil
+        return true
     }
 
     private func cancelCapture() async {

@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var availableMicrophones: [MicrophoneDevice] = []
     @State private var downloadProgress: Double?
     @State private var confirmingHistoryClear = false
+    @State private var profileBundleID = ""
+    @State private var profileName = ""
+    @State private var profilePreset: AppProfilePreset = .standard
 
     var body: some View {
         ScrollView {
@@ -164,6 +167,92 @@ struct SettingsView: View {
                     }
                 }
 
+                settingsCard(title: "Refinement") {
+                    VStack(alignment: .leading, spacing: PourSpace.md) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: PourSpace.xxs) {
+                                Text("Processing mode").font(PourFont.body(13)).foregroundStyle(PourColor.text)
+                                Text(accuracyHint).font(PourFont.callout()).foregroundStyle(PourColor.textMuted)
+                            }
+                            Spacer()
+                            Picker("", selection: accuracyMode) {
+                                ForEach(AccuracyMode.allCases, id: \.self) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .labelsHidden().frame(width: 150)
+                        }
+
+                        HStack {
+                            Text("Cleanup strength").font(PourFont.body(13)).foregroundStyle(PourColor.text)
+                            Spacer()
+                            Picker("", selection: cleanupLevel) {
+                                Text("Off").tag(CleanupLevel.off)
+                                Text("Conservative").tag(CleanupLevel.conservative)
+                                Text("Balanced").tag(CleanupLevel.balanced)
+                                Text("Aggressive").tag(CleanupLevel.aggressive)
+                            }
+                            .labelsHidden().frame(width: 150)
+                        }
+
+                        Divider().overlay(PourColor.borderHairline)
+                        refinementToggle("Remove safe fillers", detail: "Removes standalone um, uh, erm, and ah.", value: refinementFlag(\.removeFillers))
+                        refinementToggle("Collapse repetitions", detail: "Turns “the the report” into “the report.”", value: refinementFlag(\.removeRepetitions))
+                        refinementToggle("Resolve false starts", detail: "Uses explicit cues such as “actually” and “no.”", value: refinementFlag(\.cleanFalseStarts))
+                        refinementToggle("Spoken punctuation", detail: "Understands “comma,” “new line,” and related commands.", value: refinementFlag(\.spokenPunctuation))
+                        refinementToggle("Format spoken lists", detail: "Turns first/second/finally sequences into bullets.", value: refinementFlag(\.automaticListFormatting))
+                        refinementToggle("Expand change details", detail: "Opens original-versus-refined details automatically in History.", value: refinementFlag(\.showChangesBeforeInsertion))
+
+                        VStack(alignment: .leading, spacing: PourSpace.xxs) {
+                            Text("LIVE EXAMPLE").font(PourFont.caption()).foregroundStyle(PourColor.textDim)
+                            Text("Um, send the the report comma new paragraph thanks")
+                                .font(PourFont.mono(11)).foregroundStyle(PourColor.textDim).strikethrough(model.settings.removeFillers)
+                            Text(refinementExample)
+                                .font(PourFont.monoMedium(11)).foregroundStyle(PourColor.success)
+                        }
+                        .padding(PourSpace.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(PourColor.surfacePanel2)
+                        .clipShape(RoundedRectangle(cornerRadius: PourRadius.sm, style: .continuous))
+                    }
+                }
+
+                settingsCard(title: "Application Profiles") {
+                    VStack(alignment: .leading, spacing: PourSpace.md) {
+                        Text("Override refinement for Messages, email, notes, or coding tools. Profiles are matched by bundle identifier.")
+                            .font(PourFont.callout()).foregroundStyle(PourColor.textMuted)
+
+                        ForEach(model.settings.appProfiles) { profile in
+                            HStack(spacing: PourSpace.sm) {
+                                Image(systemName: "app.badge.checkmark").foregroundStyle(PourColor.blue400)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(profile.name).font(PourFont.body(13)).foregroundStyle(PourColor.text)
+                                    Text("\(profile.bundleIdentifier) · \(profile.preset.rawValue.capitalized)")
+                                        .font(PourFont.mono(10)).foregroundStyle(PourColor.textDim)
+                                }
+                                Spacer()
+                                Button("Remove", role: .destructive) { model.removeAppProfile(profile) }
+                                    .buttonStyle(.borderless)
+                            }
+                        }
+
+                        Divider().overlay(PourColor.borderHairline)
+                        TextField("App name", text: $profileName)
+                        TextField("Bundle identifier (for example com.apple.MobileSMS)", text: $profileBundleID)
+                        HStack {
+                            Picker("Profile", selection: $profilePreset) {
+                                ForEach(AppProfilePreset.allCases, id: \.self) { preset in
+                                    Text(preset.rawValue.capitalized).tag(preset)
+                                }
+                            }
+                            Spacer()
+                            Button("Add Profile") { addProfile() }
+                                .buttonStyle(.pourPrimary)
+                                .disabled(profileBundleID.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                }
+
                 footer
             }
             .padding(PourSpace.lg)
@@ -310,5 +399,64 @@ struct SettingsView: View {
                 }
             }
         )
+    }
+
+    private var cleanupLevel: Binding<CleanupLevel> {
+        Binding(get: { model.settings.cleanupLevel }, set: { value in
+            model.updateRefinement { $0.cleanupLevel = value }
+        })
+    }
+
+    private var accuracyMode: Binding<AccuracyMode> {
+        Binding(get: { model.settings.accuracyMode }, set: { value in
+            model.updateRefinement { $0.accuracyMode = value }
+        })
+    }
+
+    private func refinementFlag(_ keyPath: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {
+        Binding(get: { model.settings[keyPath: keyPath] }, set: { value in
+            model.updateRefinement { $0[keyPath: keyPath] = value }
+        })
+    }
+
+    private func refinementToggle(_ title: String, detail: String, value: Binding<Bool>) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: PourSpace.xxs) {
+                Text(title).font(PourFont.body(13)).foregroundStyle(PourColor.text)
+                Text(detail).font(PourFont.callout()).foregroundStyle(PourColor.textMuted)
+            }
+            Spacer()
+            Toggle("", isOn: value).labelsHidden().toggleStyle(.switch).tint(PourColor.amber)
+        }
+    }
+
+    private var accuracyHint: String {
+        switch model.settings.accuracyMode {
+        case .fast: "Lowest latency with whitespace normalization only."
+        case .accurate: "Applies your selected deterministic cleanup rules."
+        case .smartLocal: "Adds contextual cleanup on this Mac; nothing is uploaded."
+        }
+    }
+
+    private var refinementExample: String {
+        guard model.settings.cleanupLevel != .off else { return "Um, send the the report comma new paragraph thanks" }
+        let start = model.settings.removeFillers ? "Send" : "Um, send"
+        let noun = model.settings.removeRepetitions ? "the report" : "the the report"
+        let punctuation = model.settings.spokenPunctuation ? ",\n\n" : " comma new paragraph "
+        return start + " " + noun + punctuation + "thanks"
+    }
+
+    private func addProfile() {
+        let bundle = profileBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bundle.isEmpty else { return }
+        let name = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        model.saveAppProfile(AppProfile(
+            bundleIdentifier: bundle,
+            name: name.isEmpty ? bundle : name,
+            preset: profilePreset
+        ))
+        profileBundleID = ""
+        profileName = ""
+        profilePreset = .standard
     }
 }

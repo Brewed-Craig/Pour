@@ -114,6 +114,18 @@ public enum TextInjector {
         return .paste
     }
 
+    /// Reverts the most recent insertion using the target application's native undo
+    /// manager. This is deliberately guarded by app identity: sending Command-Z after
+    /// focus has moved could destroy unrelated work in another application.
+    @discardableResult
+    public static func undoLastInsertion(in target: InjectionTarget) -> Bool {
+        guard let bundleID = target.bundleID,
+              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
+        else { return false }
+        postCommandKey(virtualKey: 6) // kVK_ANSI_Z
+        return true
+    }
+
     // MARK: - Strategy 1: Accessibility
 
     private static func setSelectedText(_ text: String, on element: AXUIElement) -> Bool {
@@ -187,11 +199,13 @@ public enum TextInjector {
     }
 
     private static func postCommandV() {
-        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
-        let vKey: CGKeyCode = 9 // kVK_ANSI_V
+        postCommandKey(virtualKey: 9) // kVK_ANSI_V
+    }
 
-        let down = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
+    private static func postCommandKey(virtualKey: CGKeyCode) {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
+        let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
         down?.setIntegerValueField(.eventSourceUserData, value: syntheticMarker)
