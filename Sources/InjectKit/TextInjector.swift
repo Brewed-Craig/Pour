@@ -56,7 +56,13 @@ public enum TextInjector {
         "com.figma.Desktop",
         "com.hnc.Discord",
         "com.microsoft.teams2",
-        "io.dsh.desktop"
+        "io.dsh.desktop",
+
+        // Native Cocoa apps with the same silent-discard bug: AXSelectedText reports
+        // settable and the write returns success, but Outlook's rich-text compose
+        // field never applies it. Confirmed 2026-08-31 via history.json — logged
+        // strategy "accessibility" for a delivery the user never saw land.
+        "com.microsoft.Outlook"
     ]
 
     private static let syntheticMarker: Int64 = 0x504F_5552 // "POUR"
